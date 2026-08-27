@@ -9,15 +9,15 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Promise;
 
-public class PermissionManagerModule extends ReactContextBaseJavaModule {
-    PermissionManagerModule (ReactApplicationContext context) {
+public class PermissionsModule extends ReactContextBaseJavaModule {
+    PermissionsModule(ReactApplicationContext context) {
         super(context);
     }
 
     @NonNull
     @Override
     public String getName() {
-        return "PermissionManagerModule";
+        return "PermissionsModule";
     }
     @ReactMethod
     public void requestOverlayPermission() {

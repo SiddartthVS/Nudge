@@ -1,33 +1,33 @@
-import React from 'react';
-import { View, Text, StyleSheet, Button } from 'react-native';
-import { NativeModules } from 'react-native';
-const { DummyModule, PackageManagerModule } = NativeModules;
+import { NativeModules, Button, View } from 'react-native';
 
-console.log('MODULE:', DummyModule);
-console.log('INFO:', typeof DummyModule?.shout);
+// Make sure this name EXACTLY matches the string in your Java getName() method
+const { PermissionsModule } = NativeModules; 
 
-DummyModule?.shout();
+export default function App() {
+  
+  const handleOverlayRequest = () => {
+    console.log("1. Button clicked!");
+    console.log("2. Is Module Linked?:", PermissionsModule);
+    
+    if (!PermissionsModule) {
+      console.error("❌ MODULE IS UNDEFINED - The Java package is not linked correctly.");
+      return;
+    }
 
-const App = () => {
+    try {
+      console.log("3. Calling Java method...");
+      PermissionsModule.requestOverlayPermission();
+    } catch (error) {
+      console.error("❌ JAVA ERROR:", error);
+    }
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Hello, World!</Text>
-      <Button title="Enable Overlay Permission" onPress={() => PackageManagerModule?.requestOverlayPermission()} />
-        <Button title="Enable Accessibility Permission" onPress={() => PackageManagerModule?.requestAccessibilityPermission()} />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Button 
+        title="Test Overlay Permission" 
+        onPress={handleOverlayRequest} 
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  text: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-});
-
-export default App;
