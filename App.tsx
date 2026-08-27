@@ -1,37 +1,19 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React from 'react';
+import { View, Text, StyleSheet, Button } from 'react-native';
+import { NativeModules } from 'react-native';
+const { DummyModule, PackageManagerModule } = NativeModules;
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+console.log('MODULE:', DummyModule);
+console.log('INFO:', typeof DummyModule?.shout);
 
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+DummyModule?.shout();
 
-  return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
-    </SafeAreaProvider>
-  );
-}
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
+const App = () => {
   return (
     <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
+      <Text style={styles.text}>Hello, World!</Text>
+      <Button title="Enable Overlay Permission" onPress={() => PackageManagerModule?.requestOverlayPermission()} />
+        <Button title="Enable Accessibility Permission" onPress={() => PackageManagerModule?.requestAccessibilityPermission()} />
     </View>
   );
 }
@@ -39,6 +21,12 @@ function AppContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  text: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
 });
 
