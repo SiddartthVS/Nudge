@@ -1,33 +1,49 @@
-import { NativeModules, Button, View } from 'react-native';
-
-// Make sure this name EXACTLY matches the string in your Java getName() method
+import { useState, useEffect } from 'react';
+import { NativeModules, Button, View, AppState } from 'react-native';
+import HomeScreen from './screens/HomeScreen';
+import PermissionScreen from './screens/PermissionsScreen';
 const { PermissionsModule } = NativeModules; 
 
 export default function App() {
+  const [overlayGranted, setOverlayGranted] = useState(false);
+  const [accessibilityGranted, setAccessibilityGranted] = useState(false);
   
-  const handleOverlayRequest = () => {
-    console.log("1. Button clicked!");
-    console.log("2. Is Module Linked?:", PermissionsModule);
-    
-    if (!PermissionsModule) {
-      console.error("❌ MODULE IS UNDEFINED - The Java package is not linked correctly.");
-      return;
-    }
-
+  const verifyPermissions = async () => {
     try {
-      console.log("3. Calling Java method...");
-      PermissionsModule.requestOverlayPermission();
+      const overlayPermission = await PermissionsModule.checkOverlayPermission();
+      const accessibilityPermission = await PermissionsModule.checkAccessibilityPermission();
+      
+      setOverlayGranted(overlayPermission);
+      setAccessibilityGranted(accessibilityPermission);
     } catch (error) {
-      console.error("❌ JAVA ERROR:", error);
+      console.error("Error checking permissions:", error);
     }
   };
 
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Button 
-        title="Test Overlay Permission" 
-        onPress={handleOverlayRequest} 
-      />
-    </View>
-  );
+  useEffect(() => {
+    verifyPermissions();
+
+    const subscription =  AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        verifyPermissions();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [])
+
+
+  
+  if(overlayGranted && accessibilityGranted) {
+    return (
+      <HomeScreen />
+    );
+  }
+  else {
+    return (
+      <PermissionScreen />
+    )
+  }
 }
