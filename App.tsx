@@ -38,7 +38,7 @@ export default function App() {
   
   if(overlayGranted && accessibilityGranted) {
     return (
-      <HomeScreen />
+      <PermissionScreen />
     );
   }
   else {

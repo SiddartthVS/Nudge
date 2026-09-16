@@ -1,14 +1,9 @@
 import React from 'react';
-import {
-    View,
-    Text,
-    TouchableOpacity,
-    StyleSheet,
-} from 'react-native';
-
+import { View,Text,TouchableOpacity,StyleSheet} from 'react-native';
 import { NativeModules } from 'react-native';
-
+import { Colors } from './colors';
 const { PermissionsModule } = NativeModules;
+
 
 const PermissionsScreen = () => {
 
@@ -31,15 +26,29 @@ const PermissionsScreen = () => {
             </Text>
 
             <View style={styles.line} />
+            
+            <View style={styles.track}>
+                <View style={[styles.trackRound,
+                            { left:'0%' }]}></View>
 
-            {/* Overlay Permission */}
+                <View style={[styles.trackRound,
+                            { left:'30%' }]}></View>
+
+                <View style={[styles.trackRound,
+                            { width: '40%', left: '60%' }]}>
+                                <Text style={styles.trackText}>Nudge!-></Text>
+                            </View>
+                
+                <View style={styles.trackLine}></View>
+            </View>
+
             <View style={styles.permissionCard}>
                 <Text style={styles.permissionText}>
                     Display over{"\n"}apps
                 </Text>
 
                 <TouchableOpacity
-                    style={styles.allowButton}
+                    style={styles.button}
                     onPress={handleOverlayPermission}
                 >
                     <Text style={styles.buttonText}>
@@ -48,14 +57,13 @@ const PermissionsScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Accessibility Permission */}
             <View style={styles.permissionCard}>
                 <Text style={styles.permissionText}>
                     Accessibility{"\n"}service
                 </Text>
 
                 <TouchableOpacity
-                    style={styles.allowButton}
+                    style={styles.button}
                     onPress={handleAccessibilityPermission}
                 >
                     <Text style={styles.buttonText}>
@@ -72,27 +80,62 @@ const styles = StyleSheet.create({
 
     container: {
         flex: 1,
-        backgroundColor: '#111111',
+        backgroundColor: Colors.background,
         padding: 16,
     },
 
     title: {
-        color: '#FFFFFF',
-        fontSize: 36,
-        fontWeight: '900',
-        marginTop: 45,
+        color: Colors.text,
+        fontSize: 60,
+        marginTop: '20%',
+        fontFamily: 'WorkSans-Black',
     },
 
     line: {
         height: 2,
-        backgroundColor: '#333333',
+        backgroundColor: Colors.grey,
         marginTop: 25,
         marginBottom: 30,
     },
 
+    track: {
+        top: 10,
+        height: '10%',
+        width: '85%',
+        alignSelf: 'center',
+    },
+
+    trackRound: {
+        width: 40,
+        height: 40,
+        position: 'absolute',
+        borderRadius: 20,
+        backgroundColor: Colors.grey,
+        zIndex: 1,
+    },
+
+    trackText: {
+        color: Colors.text,
+        fontSize: 20,
+        fontFamily: 'WorkSans-Black',
+        lineHeight: 40,
+        textAlign: 'center',
+   },
+
+    trackLine: {
+        position: 'absolute',
+        justifyContent: 'center',
+        alignItems: 'center',
+        top: 15,
+        width: '100%',
+        height: '10%',
+        backgroundColor: Colors.grey,
+        zIndex: 0,
+    },
+
     permissionCard: {
-        height: 64,
-        backgroundColor: '#3A3A3A',
+        height: '10%',
+        backgroundColor: Colors.grey,
         borderRadius: 7,
         marginBottom: 30,
         paddingHorizontal: 13,
@@ -102,24 +145,24 @@ const styles = StyleSheet.create({
     },
 
     permissionText: {
-        color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: '700',
+        color: Colors.text,
+        fontSize: 24,
+        fontFamily: 'WorkSans-Bold',
     },
 
-    allowButton: {
-        backgroundColor: '#FF6B70',
-        width: 84,
-        height: 36,
-        borderRadius: 20,
+    button: {
+        backgroundColor: Colors.orange,
+        width: '30%',
+        height: '50%',
+        borderRadius: 40,
         alignItems: 'center',
         justifyContent: 'center',
     },
 
     buttonText: {
-        color: '#FFFFFF',
-        fontSize: 15,
-        fontWeight: '800',
+        color: Colors.text,
+        fontSize: 20,
+        fontFamily: 'WorkSans-Black',
     },
 
 });
