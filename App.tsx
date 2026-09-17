@@ -1,49 +1,15 @@
-import { useState, useEffect } from 'react';
-import { NativeModules, Button, View, AppState } from 'react-native';
+import React, { useState } from 'react';
 import HomeScreen from './screens/HomeScreen';
-import PermissionScreen from './screens/PermissionsScreen';
-const { PermissionsModule } = NativeModules; 
+import PermissionsScreen from './screens/PermissionsScreen';
 
 export default function App() {
-  const [overlayGranted, setOverlayGranted] = useState(false);
-  const [accessibilityGranted, setAccessibilityGranted] = useState(false);
-  
-  const verifyPermissions = async () => {
-    try {
-      const overlayPermission = await PermissionsModule.checkOverlayPermission();
-      const accessibilityPermission = await PermissionsModule.checkAccessibilityPermission();
-      
-      setOverlayGranted(overlayPermission);
-      setAccessibilityGranted(accessibilityPermission);
-    } catch (error) {
-      console.error("Error checking permissions:", error);
-    }
-  };
+  const [setupComplete, setSetupComplete] = useState(false);
 
-  useEffect(() => {
-    verifyPermissions();
-
-    const subscription =  AppState.addEventListener('change', nextAppState => {
-      if (nextAppState === 'active') {
-        verifyPermissions();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [])
-
-
-  
-  if(overlayGranted && accessibilityGranted) {
-    return (
-      <PermissionScreen />
-    );
+  if (setupComplete) {
+    return <HomeScreen />;
   }
-  else {
-    return (
-      <PermissionScreen />
-    )
-  }
+
+  return (
+    <PermissionsScreen onComplete={() => setSetupComplete(true)} />
+  );
 }
