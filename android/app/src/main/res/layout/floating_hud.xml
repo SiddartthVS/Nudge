@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+    Big centered count that flashes on each counted reel (fade logic lives in TrackerService).
+    No background box: the number floats over the app. The shadow keeps it readable over both
+    bright and dark video. The font (WorkSans-Black) and the text size are set in code, because
+    the size shrinks as the count gets more digits so it always fits the screen width.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:background="#CC000000"
-    android:padding="16dp"
-    android:orientation="vertical"
-    android:gravity="center">
+    android:layout_height="wrap_content">
 
     <TextView
         android:id="@+id/scroll_counter_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Scrolls: 0"
+        android:includeFontPadding="false"
+        android:text="0"
         android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold" />
+        android:textSize="180sp"
+        android:shadowColor="#B3000000"
+        android:shadowDx="0"
+        android:shadowDy="4"
+        android:shadowRadius="16" />
 
-</LinearLayout>
+</FrameLayout>

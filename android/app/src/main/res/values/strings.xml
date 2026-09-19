@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Nudge</string>
+    <string name="accessibility_service_description">Nudge counts how many times you scroll inside short-form feeds such as Instagram Reels, YouTube Shorts, Facebook Reels and Snapchat, and shows the running count in a small floating counter.</string>
 </resources>
