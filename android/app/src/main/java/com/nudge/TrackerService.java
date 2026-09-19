@@ -1,413 +1,279 @@
 package com.nudge;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
+/**
+ * Manages accessibility events to track active applications, monitor scroll
+ * counts,
+ * and toggle a floating overlay HUD.
+ * 
+ * Variables:
+ * - monitoredApps: Target packages for HUD and scroll tracking.
+ * - handler / prefs: Main thread handler and SharedPreferences for local
+ * storage.
+ * - windowManager / hudView / layoutParams: Floating window components.
+ * - isAttached / activeApp / eventVersion: Window and state tracking flags.
+ * 
+ * Functions:
+ * 
+ * [Lifecycle]
+ * - onServiceConnected: Initializes window manager, HUD, and SharedPreferences.
+ * - onInterrupt / onDestroy: Cleans up views, handlers, and resources.
+ * 
+ * [UI Management]
+ * - initHud / attachHud / showHud / hideHud: Lifecycle and visibility
+ * management for the overlay.
+ * 
+ * [Event Handling]
+ * - onAccessibilityEvent: Intercepts scrolls (to track counts) and window
+ * changes (to toggle HUD).
+ * 
+ * [Data Tracking]
+ * - trackScroll: Increments scroll count for monitored apps in
+ * SharedPreferences.
+ * - syncDailyData: Validates the date, archives old data to DB, and resets
+ * daily counts.
+ * 
+ * [Utilities]
+ * - getEmptyDataMap: Generates a zeroed-out JSON state for monitored apps.
+ * - getTodayDate: Retrieves the current date string (yyyy-MM-dd).
+ */
 public class TrackerService extends AccessibilityService {
 
-    private static final String TAG = "NudgeTrackerService";
-
-    private static final String SYSTEM_UI = "com.android.systemui";
-    private static final String GBOARD = "com.google.android.inputmethod.latin";
-
-    /*
-     * Apps that should trigger the Nudge HUD.
-     */
-    private final Set<String> targetApps = new HashSet<>(Arrays.asList(
+    private final Set<String> monitoredApps = new HashSet<>(Arrays.asList(
             "com.instagram.android",
             "com.google.android.youtube",
-            "com.twitter.android"
-    ));
+            "com.facebook.katana",
+            "com.snapchat.android"));
 
-    private final Handler mainHandler =
-            new Handler(Looper.getMainLooper());
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private SharedPreferences prefs;
 
     private WindowManager windowManager;
-    private View floatingView;
-    private WindowManager.LayoutParams windowParams;
+    private View hudView;
+    private WindowManager.LayoutParams layoutParams;
 
-    /*
-     * This is the actual source of truth for whether the View
-     * has been successfully added to WindowManager.
-     */
-    private boolean isAttached = false;
-
-    /*
-     * Last package reported by AccessibilityService.
-     * Used to avoid doing unnecessary work for duplicate events.
-     */
-    private String currentForegroundPackage = null;
-
-    /*
-     * Used to prevent stale delayed callbacks from changing
-     * the overlay after the user has already switched apps.
-     */
-    private int foregroundGeneration = 0;
+    private boolean isAttached;
+    private String activeApp;
+    private int eventVersion;
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
 
-        /*
-         * Everything touching WindowManager/View happens on
-         * the main thread.
-         */
-        mainHandler.post(() -> {
+        prefs = getSharedPreferences("NudgePrefs", MODE_PRIVATE);
 
-            windowManager =
-                    (WindowManager) getSystemService(WINDOW_SERVICE);
-
-            /*
-             * Prepare the overlay.
-             *
-             * We DON'T necessarily show it here because we don't
-             * yet know which app is in the foreground.
-             */
-            ensureOverlayCreated();
-
-            /*
-             * Start with the HUD hidden.
-             */
-            hideOverlay();
-
+        handler.post(() -> {
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            initHud();
+            hideHud();
         });
     }
 
-    /**
-     * Creates the overlay object if it doesn't exist.
-     *
-     * This method does NOT assume that the View is currently
-     * attached to WindowManager.
-     */
-    private void ensureOverlayCreated() {
-
-        if (windowManager == null) {
+    private void initHud() {
+        if (windowManager == null || hudView != null)
             return;
-        }
 
-        if (floatingView != null) {
-            return;
-        }
-
-        floatingView = LayoutInflater
-                .from(this)
+        hudView = LayoutInflater.from(this)
                 .inflate(R.layout.floating_hud, null);
 
-        windowParams = new WindowManager.LayoutParams(
+        layoutParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT);
 
-                PixelFormat.TRANSLUCENT
-        );
+        layoutParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        layoutParams.y = 100;
 
-        windowParams.gravity =
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-
-        windowParams.y = 100;
-
-        /*
-         * Never let the newly-created View appear until
-         * we explicitly decide that the foreground app
-         * is a target app.
-         */
-        floatingView.setVisibility(View.GONE);
+        hudView.setVisibility(View.GONE);
     }
 
-    /**
-     * Makes sure the View is actually registered with
-     * WindowManager.
-     *
-     * This is the important recovery mechanism.
-     */
-    private boolean ensureOverlayAttached() {
-
-        if (windowManager == null) {
+    private boolean attachHud() {
+        if (windowManager == null)
             return false;
-        }
 
-        ensureOverlayCreated();
+        initHud();
 
-        if (floatingView == null) {
+        if (hudView == null)
             return false;
-        }
 
-        if (isAttached) {
+        if (isAttached)
             return true;
-        }
 
         try {
-
-            windowManager.addView(
-                    floatingView,
-                    windowParams
-            );
-
+            windowManager.addView(hudView, layoutParams);
             isAttached = true;
-
             return true;
-
-        } catch (WindowManager.BadTokenException e) {
-
-            /*
-             * Android rejected the window token.
-             *
-             * Don't crash the AccessibilityService.
-             */
-            isAttached = false;
-            return false;
-
-        } catch (IllegalStateException e) {
-
-            /*
-             * Can happen if the View was already added/removed
-             * while Android was changing window state.
-             */
-            isAttached = false;
-            return false;
-
         } catch (Exception e) {
-
-            /*
-             * Last line of defense.
-             */
+            Log.e("TrackerService", "Failed to add HUD view to WindowManager", e);
             isAttached = false;
             return false;
         }
     }
 
-    /**
-     * Show the HUD.
-     */
-    private void showOverlay() {
-
-        if (!ensureOverlayAttached()) {
+    private void showHud() {
+        if (!attachHud())
             return;
-        }
 
-        if (floatingView != null) {
-            floatingView.setVisibility(View.VISIBLE);
-        }
+        hudView.setVisibility(View.VISIBLE);
     }
 
-    /**
-     * Hide the HUD.
-     *
-     * We intentionally DO NOT remove the View from WindowManager.
-     *
-     * GONE is cheap and avoids repeatedly destroying/recreating
-     * the WindowManager window.
-     */
-    private void hideOverlay() {
-
-        if (floatingView != null) {
-            floatingView.setVisibility(View.GONE);
-        }
-    }
-
-    /**
-     * Completely remove the overlay.
-     *
-     * Used only when the service itself is being destroyed.
-     */
-    private void removeOverlay() {
-
-        if (floatingView == null) {
-            return;
-        }
-
-        if (windowManager == null) {
-            floatingView = null;
-            isAttached = false;
-            return;
-        }
-
-        if (!isAttached) {
-            floatingView = null;
-            return;
-        }
-
-        try {
-
-            windowManager.removeViewImmediate(
-                    floatingView
-            );
-
-        } catch (IllegalArgumentException ignored) {
-
-            /*
-             * View wasn't attached anymore.
-             */
-
-        } catch (Exception ignored) {
-            /*
-             * Never allow cleanup to crash the service.
-             */
-        }
-
-        isAttached = false;
-        floatingView = null;
+    private void hideHud() {
+        if (hudView != null)
+            hudView.setVisibility(View.GONE);
     }
 
     @Override
-    public void onAccessibilityEvent(
-            AccessibilityEvent event
-    ) {
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        CharSequence name = event.getPackageName();
+        if (name == null)
+            return;
 
-        int eventType = event.getEventType();
+        String app = name.toString();
+        int type = event.getEventType();
 
-        /*
-         * We mainly care about window changes.
-         */
-        if (eventType !=
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                &&
-                eventType !=
-                        AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
-
+        if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            trackScroll(app);
             return;
         }
 
-        CharSequence packageName =
-                event.getPackageName();
-
-        if (packageName == null) {
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                type != AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             return;
         }
 
-        String packageString =
-                packageName.toString();
-
-        /*
-         * Ignore system windows that should not change
-         * our foreground-app state.
-         */
-        if (packageString.equals(SYSTEM_UI)
-                || packageString.equals(GBOARD)) {
-
+        if (app.equals("com.android.systemui") ||
+                app.equals("com.android.inputmethod.latin") ||
+                app.equals(getPackageName())) {
             return;
         }
 
-        /*
-         * Ignore our own application.
-         */
-        if (packageString.equals(getPackageName())) {
+        if (app.equals(activeApp))
             return;
-        }
 
-        /*
-         * Don't process the same package repeatedly.
-         */
-        if (packageString.equals(currentForegroundPackage)) {
-            return;
-        }
+        activeApp = app;
+        int currentVersion = ++eventVersion;
 
-        /*
-         * New foreground package.
-         */
-        currentForegroundPackage = packageString;
-
-        /*
-         * Increment generation.
-         *
-         * Any previously scheduled operation becomes stale.
-         */
-        foregroundGeneration++;
-
-        final int generation =
-                foregroundGeneration;
-
-        final String foregroundPackage =
-                packageString;
-
-        /*
-         * Small debounce.
-         *
-         * Android can generate several window events while
-         * transitioning between applications.
-         */
-        mainHandler.postDelayed(() -> {
-
-            /*
-             * Ignore this callback if the user has already
-             * switched to another package.
-             */
-            if (generation != foregroundGeneration) {
+        handler.postDelayed(() -> {
+            if (currentVersion != eventVersion)
                 return;
-            }
 
-            /*
-             * Make sure the service is still alive.
-             */
-            if (windowManager == null) {
-                return;
-            }
-
-            if (targetApps.contains(foregroundPackage)) {
-
-                /*
-                 * Target app.
-                 *
-                 * Ensure the window exists and is attached,
-                 * then show it.
-                 */
-                showOverlay();
-
-            } else {
-
-                /*
-                 * Non-target app.
-                 */
-                hideOverlay();
-            }
-
+            if (monitoredApps.contains(app))
+                showHud();
+            else
+                hideHud();
         }, 50);
+    }
+
+    private void trackScroll(String app) {
+        if (!monitoredApps.contains(app))
+            return;
+
+        syncDailyData();
+
+        try {
+            String jsonStr = prefs.getString("scroll_data", getEmptyDataMap());
+            JSONObject json = new JSONObject(jsonStr);
+
+            int currentCount = json.optInt(app, 0);
+            json.put(app, currentCount + 1);
+
+            prefs.edit().putString("scroll_data", json.toString()).apply();
+        } catch (Exception e) {
+            Log.e("TrackerService", "Failed to parse or update scroll data", e);
+        }
+    }
+
+    private void syncDailyData() {
+        String today = getTodayDate();
+        String savedDate = prefs.getString("current_date", null);
+
+        if (savedDate == null) {
+            prefs.edit()
+                    .putString("current_date", today)
+                    .putString("scroll_data", getEmptyDataMap())
+                    .apply();
+            return;
+        }
+
+        if (!savedDate.equals(today)) {
+            String oldData = prefs.getString("scroll_data", getEmptyDataMap());
+
+            new Thread(() -> {
+                try {
+                    ExternalDatabaseHandler.saveData(savedDate, oldData);
+                } catch (Exception e) {
+                    Log.e("TrackerService", "Failed to sync daily data to database", e);
+                }
+            }).start();
+
+            prefs.edit()
+                    .putString("current_date", today)
+                    .putString("scroll_data", getEmptyDataMap())
+                    .apply();
+        }
+    }
+
+    private String getEmptyDataMap() {
+        JSONObject json = new JSONObject();
+        try {
+            for (String app : monitoredApps) {
+                json.put(app, 0);
+            }
+        } catch (Exception e) {
+            Log.e("TrackerService", "Failed to create empty data map", e);
+        }
+        return json.toString();
+    }
+
+    private String getTodayDate() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+        return sdf.format(new Date());
     }
 
     @Override
     public void onInterrupt() {
-
-        /*
-         * AccessibilityService has been interrupted.
-         *
-         * Don't destroy the View here. Just hide it.
-         */
-        mainHandler.post(() -> {
-            hideOverlay();
-        });
+        handler.post(this::hideHud);
     }
 
     @Override
     public void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
 
-        /*
-         * Cancel pending accessibility callbacks.
-         */
-        mainHandler.removeCallbacksAndMessages(null);
+        handler.post(() -> {
+            if (windowManager != null && hudView != null && isAttached) {
+                try {
+                    windowManager.removeViewImmediate(hudView);
+                } catch (Exception e) {
+                    Log.e("TrackerService", "Failed to remove HUD view on destroy", e);
+                }
+            }
 
-        /*
-         * Remove the actual WindowManager window.
-         */
-        mainHandler.post(() -> {
-
-            removeOverlay();
-
+            hudView = null;
             windowManager = null;
-            currentForegroundPackage = null;
+            isAttached = false;
+            activeApp = null;
         });
 
         super.onDestroy();
