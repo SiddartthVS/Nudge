@@ -1,7 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    NUDGE tracker configuration.
+
+    typeWindowContentChanged was added alongside typeViewScrolled because YouTube
+    Shorts and Snapchat advance to the next reel without firing a scroll event at
+    all - the swipe animation fires content-changed instead. TrackerService debounces
+    these per app before doing any work, so this does not mean processing every
+    content change on screen.
+
+    flagIncludeNotImportantViews: Instagram, YouTube Shorts and Snapchat mark most
+    of their feed containers as not-important-for-accessibility, so without this
+    flag their scroll/content events are filtered out before they ever reach
+    TrackerService.
+
+    flagReportViewIds is required for AccessibilityNodeInfo#findAccessibilityNodeInfosByViewId
+    to work - ReelSignal uses it to locate each app's caption/author/content nodes.
+
+    notificationTimeout MUST stay 0. Any non-zero value makes the framework coalesce
+    same-type events, which would delay the very events ReelSignal needs to see.
+
+    packageNames is deliberately NOT set. The service needs events from
+    unmonitored apps too, otherwise it can never tell that the user has left
+    Instagram and the HUD would stay on screen.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeViewScrolled"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewScrolled|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds"
     android:canRetrieveWindowContent="true"
-    android:description="@string/app_name" />
+    android:notificationTimeout="0"
+    android:description="@string/accessibility_service_description" />
