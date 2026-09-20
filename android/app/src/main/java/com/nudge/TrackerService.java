@@ -52,9 +52,9 @@ public class TrackerService extends AccessibilityService {
 
     private static final String TAG = "NudgeTracker";
 
-    private static final String PREFS_NAME = "NudgePrefs";
-    private static final String KEY_SCROLL_DATA = "scroll_data";
-    private static final String KEY_CURRENT_DATE = "current_date";
+    static final String PREFS_NAME = "NudgePrefs";
+    static final String KEY_SCROLL_DATA = "scroll_data";
+    static final String KEY_CURRENT_DATE = "current_date";
 
     /** Trailing debounce for disk writes. Never delays the counter itself. */
     private static final long PERSIST_DELAY_MS = 1500L;
@@ -158,6 +158,9 @@ public class TrackerService extends AccessibilityService {
 
         currentApp = null;
         isAttached = false;
+
+        // Re-send any days that failed to upload earlier (e.g. phone was offline at midnight).
+        SupabaseSync.retryPending(this);
 
         loadState();
         createHud();
@@ -656,17 +659,14 @@ public class TrackerService extends AccessibilityService {
         persistNow();
     }
 
-    private void archive(final String date, final String jsonData) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    ExternalDatabaseHandler.saveData(date, jsonData);
-                } catch (Exception e) {
-                    Log.e(TAG, "DB archive failed for " + date, e);
-                }
-            }
-        }, "nudge-archive").start();
+    /**
+     * Hands a finished day to local history (what the "This week" chart actually reads) and to
+     * SupabaseSync, which queues it on disk and uploads on its own background thread - so this
+     * returns immediately and a failed upload is retried later.
+     */
+    private void archive(String date, String jsonData) {
+        WeekHistoryStore.recordDay(getApplicationContext(), date, jsonData);
+        SupabaseSync.archiveDay(getApplicationContext(), date, jsonData);
     }
 
     private String today() {
