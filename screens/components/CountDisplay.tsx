@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors } from '../colors';
-import { DayCounts, getTodayCounts } from '../native/stats';
-import { useBase, pct } from '../scale';
+import { AppState, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../scripts/colors';
+import { DayCounts, getTodayCounts } from '../scripts/stats';
 
 
 const POLL_INTERVAL_MS = 3000;
@@ -21,7 +20,6 @@ const FILTERS: AppFilter[] = [
 ];
 
 const CountDisplay = () => {
-  const base = useBase();
   const [todayCounts, setTodayCounts] = useState<DayCounts>({});
   const [selectedPkg, setSelectedPkg] = useState<string | null>(null);
 
@@ -32,8 +30,6 @@ const CountDisplay = () => {
   useEffect(() => {
     refresh();
 
-    // Covers the common case: user scrolls Instagram, then switches back to Nudge - this
-    // fires the moment the app becomes visible again, instead of waiting for the next poll.
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
         refresh();
@@ -53,10 +49,16 @@ const CountDisplay = () => {
     : todayCounts[selectedPkg] ?? 0;
 
   return (
-    <View style={[styles.card, { borderRadius: pct(base, 2.7) }]}>
+    <View style={styles.card}>
+      <Image
+        source={require('../../assets/images/bg.png')}
+        resizeMode="stretch"
+        style={styles.background}
+      />
 
       <View style={styles.content}>
         <Text style={styles.count}>{displayCount}</Text>
+        <Text style={styles.text}>scrolls today</Text>
 
         <View style={styles.pills}>
           {FILTERS.map(filter => {
@@ -65,9 +67,14 @@ const CountDisplay = () => {
               <TouchableOpacity
                 key={filter.label}
                 onPress={() => setSelectedPkg(filter.pkg)}
-                style={[styles.pill, active && styles.pillActive]}
+                style={[styles.pill, { flex: filter.label.length + 4 }, active && styles.pillActive]}
               >
-                <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.5}
+                  style={[styles.pillLabel, active && styles.pillLabelActive]}
+                >
                   {filter.label}
                 </Text>
               </TouchableOpacity>
@@ -81,47 +88,55 @@ const CountDisplay = () => {
 
 export default CountDisplay;
 
-// ---------------------------------------------------------------------- helpers
 
 function sumAll(counts: DayCounts): number {
   return Object.values(counts).reduce((sum, count) => sum + (Number(count) || 0), 0);
 }
 
 
-// ------------------------------------------------------------------------ style
-
 const styles = StyleSheet.create({
-
   card: {
-    // borderRadius is set in the component as a % of the screen width (see pct), not a fixed 20.
+    borderRadius: '3%',
     overflow: 'hidden',
     flex: 1,
+  },
+  background: {
+    position: 'absolute',
+    width: '122%',
+    height: '122%',
+    left: '-11%',
+    top: '-11%',
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: '6%',
   },
   count: {
     color: Colors.text,
     fontFamily: 'WorkSans-Black',
     fontSize: 102,
   },
+  text: {
+    color: Colors.text,
+    marginTop: '-5%',
+    fontFamily: 'WorkSans-Medium'
+  },
   pills: {
+    position: 'absolute',
+    bottom: '5%',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingHorizontal: 12,
+    width: '100%',
+    paddingHorizontal: '3%',
   },
   pill: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 999,
-    marginHorizontal: 4,
-    marginVertical: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    marginHorizontal: '0.6%',
+    paddingVertical: '1.5%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillActive: {
     backgroundColor: Colors.text,
@@ -129,7 +144,7 @@ const styles = StyleSheet.create({
   pillLabel: {
     color: Colors.text,
     fontFamily: 'WorkSans-Medium',
-    fontSize: 13,
+    fontSize: 11,
   },
   pillLabelActive: {
     color: Colors.background,

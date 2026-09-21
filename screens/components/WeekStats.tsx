@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../colors';
-import { DayCounts, formatDate, getWeekHistory, WeekHistory } from '../native/stats';
+import { Colors } from '../scripts/colors';
+import { DayCounts, formatDate, getWeekHistory, WeekHistory } from '../scripts/stats';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CHART_HEIGHT = 120;

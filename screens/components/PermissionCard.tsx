@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Colors } from '../colors';
+import { Colors } from '../scripts/colors';
 
 type PermissionCardProps = {
     title: string;

@@ -1,5 +1,5 @@
 import {Text, View} from 'react-native';
-import {Colors} from '../colors';
+import {Colors} from '../scripts/colors';
 
 export const AppStats = () => {
     return (

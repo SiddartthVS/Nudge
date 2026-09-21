@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, AppState, TouchableOpacity, NativeModules } from 'react-native';
-import { Colors } from './colors';
+import { Colors } from './scripts/colors';
 import PermissionCard from './components/PermissionCard';
 
 const { PermissionsModule: pm } = NativeModules;
