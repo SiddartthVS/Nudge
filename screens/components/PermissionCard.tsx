@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors } from '../colors';
-import { useBase, pct } from '../scale';
 
 type PermissionCardProps = {
     title: string;
@@ -10,33 +9,21 @@ type PermissionCardProps = {
     onPress: () => void;
 };
 
-/**
- * One permission row: title on the left (vertically centred with the button), a small hint line
- * underneath it, and the Allow / tick button on the right.
- *
- * Every size here is a percentage: the card is a % of its parent's height (set by the screen),
- * padding / button / hint position are % of the card, and font sizes are % of the screen via
- * pct(). Measured from the mockup.
- */
 const PermissionCard = ({ title, description, isGranted, onPress }: PermissionCardProps) => {
-    const base = useBase();
-
     return (
-        <View style={[styles.permissionCard, { borderRadius: pct(base, 2.4) }]}>
+        <View style={styles.permissionCard}>
             <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 maxFontSizeMultiplier={1.2}
-                style={[styles.permissionText, { fontSize: pct(base, 4.8) }]}
+                style={styles.permissionText}
             >
                 {title}
             </Text>
 
-            {/* Mockup hint text is ~2.4% of the width, which is only ~9sp on a phone, so it is
-                floored at 10 to stay readable. Change 3 -> 2.4 to match the mockup exactly. */}
             <Text
                 numberOfLines={1}
-                style={[styles.permissionDescription, { fontSize: Math.max(pct(base, 2.6), 10) }]}
+                style={styles.permissionDescription}
             >
                 {description}
             </Text>
@@ -51,7 +38,7 @@ const PermissionCard = ({ title, description, isGranted, onPress }: PermissionCa
             >
                 <Text
                     maxFontSizeMultiplier={1.2}
-                    style={[styles.buttonText, { fontSize: pct(base, 5.2) }]}
+                    style={styles.buttonText}
                 >
                     {isGranted ? '✓' : 'Allow'}
                 </Text>
@@ -62,31 +49,32 @@ const PermissionCard = ({ title, description, isGranted, onPress }: PermissionCa
 
 const styles = StyleSheet.create({
     permissionCard: {
-        // 27.7% of the cards block (which is 33.4% of the screen height) = 9.25% of the screen.
-        height: '27.7%',
+        height: '30%',
         backgroundColor: Colors.grey,
         paddingHorizontal: '4.3%',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        borderRadius: 12,
+        marginBottom: 25,
     },
     permissionText: {
         flexShrink: 1,
         top: '-7%',
         color: Colors.text,
         fontFamily: 'WorkSans-Bold',
+        fontSize: 24,
     },
     permissionDescription: {
         position: 'absolute',
         left: '5.6%',
-        // Stops before the button (button 33% + right padding 4.3%) so it can never run under it.
         right: '38%',
         bottom: '7%',
         color: Colors.text,
         fontFamily: 'WorkSans-Medium',
+        fontSize: 11,
     },
     button: {
-        // Percentages are of the card's inner width/height: 36% of the inner width is 33% of the card.
         width: '36%',
         height: '52%',
         borderRadius: 999,
@@ -96,6 +84,7 @@ const styles = StyleSheet.create({
     buttonText: {
         color: Colors.text,
         fontFamily: 'WorkSans-Black',
+        fontSize: 20,
     },
 });
 
