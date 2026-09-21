@@ -20,7 +20,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
             setHasAccess(accessStatus);
             setHasBattery(batteryStatus);
 
-            //if (overlayStatus && accessStatus && batteryStatus) onComplete();
+            if (overlayStatus && accessStatus && batteryStatus) onComplete();
             
         } catch (error) {
             console.error("Failed to check permissions:", error);
