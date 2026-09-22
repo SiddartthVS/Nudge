@@ -1,25 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../scripts/colors';
-import { useWeekHistory } from '../scripts/useWeekHistory';
-import { barColor, cardStyles, getCurrentWeekDates, MONITORED_APPS } from '../scripts/chart';
+import { barColor, cardStyles, MONITORED_APPS } from '../scripts/chart';
+import { RANGE_DAYS } from '../scripts/rangeStats';
+import { useRangeTotals } from '../scripts/rangeCache';
+import { RangeDropdown } from './RangeDropdown';
 
 const TICK_LADDER = [5, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const MIN_TICKS = 4;
 const MAX_TICKS = 6;
 
-export const AppStats = () => {
-  const history = useWeekHistory();
+const RANGE_OPTIONS = [
+  { label: 'Today', value: RANGE_DAYS.today },
+  { label: 'This week', value: RANGE_DAYS.week },
+  { label: 'This month', value: RANGE_DAYS.month },
+  { label: 'This year', value: RANGE_DAYS.year },
+  { label: 'Lifetime', value: RANGE_DAYS.lifetime },
+];
 
-  const weekDates = getCurrentWeekDates();
-  const totals = MONITORED_APPS.map(app =>
-    weekDates.reduce((sum, date) => sum + (Number(history[date]?.[app.pkg]) || 0), 0),
-  );
+export const AppStats = () => {
+  const [selectedDays, setSelectedDays] = useState(RANGE_DAYS.today);
+  const { totals: rangeCounts } = useRangeTotals(selectedDays);
+
+  const totals = MONITORED_APPS.map(app => Number(rangeCounts[app.pkg]) || 0);
   const ticks = buildTicks(Math.max(...totals));
 
   return (
     <View style={cardStyles.card}>
-      <Text style={cardStyles.title}>Apps</Text>
+      <View style={styles.header}>
+        <Text style={[cardStyles.title, styles.headerTitle]}>Apps</Text>
+        <RangeDropdown options={RANGE_OPTIONS} value={selectedDays} onChange={setSelectedDays} />
+      </View>
 
       <View style={styles.chart}>
         <View style={styles.names}>
@@ -44,6 +55,16 @@ export const AppStats = () => {
                   },
                 ]}
               />
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.values}>
+          {totals.map((value, index) => (
+            <View key={MONITORED_APPS[index].pkg} style={styles.valueCell}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.value}>
+                {value}
+              </Text>
             </View>
           ))}
         </View>
@@ -91,12 +112,21 @@ function positionOf(value: number, ticks: number[]): number {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  headerTitle: {
+    marginBottom: 0,
+  },
   chart: {
     flexDirection: 'row',
-    aspectRatio: 3,
+    aspectRatio: 3.5,
   },
   names: {
-    width: '24%',
+    width: '18%',
   },
   nameCell: {
     flex: 1,
@@ -115,6 +145,21 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: Colors.text,
   },
+  values: {
+    width: '13%',
+  },
+  valueCell: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingLeft: '6%',
+  },
+  value: {
+    color: Colors.text,
+    fontFamily: 'WorkSans-SemiBold',
+    fontSize: 12,
+    opacity: 0.7,
+  },
   row: {
     flex: 1,
     justifyContent: 'center',
@@ -129,7 +174,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   axisSpacer: {
-    width: '24%',
+    width: '18%',
   },
   ticks: {
     flex: 1,

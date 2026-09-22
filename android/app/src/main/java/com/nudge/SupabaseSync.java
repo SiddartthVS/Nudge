@@ -328,6 +328,6 @@ public final class SupabaseSync {
             id = UUID.randomUUID().toString();
             p.edit().putString(KEY_DEVICE_ID, id).commit();
         }
-        return id;
+        return "TEST_DEVICE_DO_NOT_USE";
     }
 }

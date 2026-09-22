@@ -22,9 +22,9 @@ const APP_FILTERS: AppFilter[] = [{ label: 'All', pkg: null }, ...MONITORED_APPS
 
 const RANGE_FILTERS: RangeFilter[] = [
   { label: 'Lifetime', days: RANGE_DAYS.lifetime },
-  { label: 'Last year', days: RANGE_DAYS.year },
-  { label: 'Last month', days: RANGE_DAYS.month },
-  { label: 'Last week', days: RANGE_DAYS.week },
+  { label: 'This year', days: RANGE_DAYS.year },
+  { label: 'This month', days: RANGE_DAYS.month },
+  { label: 'This week', days: RANGE_DAYS.week },
   { label: 'Today', days: RANGE_DAYS.today },
 ];
 
