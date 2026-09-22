@@ -11,6 +11,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
     const [hasAccess, setHasAccess] = useState(false);
     const [hasBattery, setHasBattery] = useState(false);
 
+    // Reads all three permission statuses and updates the tracker/cards.
     const checkPermissions = async () => {
         try {
             const status = await checkAllPermissions();
@@ -22,6 +23,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
         }
     };
 
+    // Check on mount, then again every time the user returns from Settings.
     useEffect(() => {
         checkPermissions();
 

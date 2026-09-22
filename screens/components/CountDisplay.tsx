@@ -33,6 +33,8 @@ const CountDisplay = () => {
   const [selectedDays, setSelectedDays] = useState<number>(RANGE_DAYS.today);
   const { totals: rangeCounts } = useRangeTotals(selectedDays);
 
+  // Refresh every range once on mount, then again whenever the app returns
+  // to the foreground (e.g. after scrolling Instagram and switching back).
   useEffect(() => {
     refreshAllRangeCaches(true);
 
@@ -45,6 +47,8 @@ const CountDisplay = () => {
     return () => subscription.remove();
   }, []);
 
+  // While the app is open, keep just the currently selected range polling -
+  // refreshRangeCache() is a no-op unless that range has actually gone stale.
   useEffect(() => {
     const interval = setInterval(() => refreshRangeCache(selectedDays), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
@@ -63,6 +67,7 @@ const CountDisplay = () => {
       />
 
       <View style={styles.content}>
+        {/* --- RANGE PILLS --- */}
         <View style={styles.rangePills}>
           {RANGE_FILTERS.map(filter => {
             const active = filter.days === selectedDays;
@@ -85,9 +90,11 @@ const CountDisplay = () => {
           })}
         </View>
 
+        {/* --- COUNTs SCROLLED --- */}
         <Text style={styles.count}>{displayCount}</Text>
         <Text style={styles.text}>scrolls!</Text>
 
+        {/* --- APP PILLS  --- */}
         <View style={styles.appPills}>
           {APP_FILTERS.map(filter => {
             const active = filter.pkg === selectedPkg;

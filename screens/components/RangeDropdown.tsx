@@ -19,11 +19,13 @@ export const RangeDropdown = ({ options, value, onChange }: Props) => {
 
   return (
     <>
+      {/* --- TRIGGER --- */}
       <TouchableOpacity style={styles.trigger} onPress={() => setOpen(true)}>
         <Text style={styles.triggerLabel}>{selected.label}</Text>
         <Text style={styles.triggerArrow}>▾</Text>
       </TouchableOpacity>
 
+      {/* --- MENU --- */}
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
           <View style={styles.menu}>

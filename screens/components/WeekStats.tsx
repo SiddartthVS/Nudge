@@ -18,6 +18,7 @@ export const WeekStats = () => {
     <View style={cardStyles.card}>
       <Text style={cardStyles.title}>This week</Text>
 
+      {/* --- CHART --- */}
       <View style={styles.chartRow}>
         <View style={styles.yAxis}>
           <Text style={cardStyles.axisLabel}>{maxValue}</Text>
@@ -49,6 +50,8 @@ export const WeekStats = () => {
   );
 };
 
+// Rounds the chart's max value up to a "nice" number (10, 20, 50, 100, 200,
+// ...) so the y-axis labels are clean instead of an arbitrary value like 173.
 function niceMax(rawMax: number): number {
   if (!Number.isFinite(rawMax) || rawMax <= 10) {
     return 10;

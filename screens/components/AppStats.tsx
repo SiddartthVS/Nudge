@@ -27,11 +27,13 @@ export const AppStats = () => {
 
   return (
     <View style={cardStyles.card}>
+      {/* --- HEADING + RANGE DROPDOWN --- */}
       <View style={styles.header}>
         <Text style={[cardStyles.title, styles.headerTitle]}>Apps</Text>
         <RangeDropdown options={RANGE_OPTIONS} value={selectedDays} onChange={setSelectedDays} />
       </View>
 
+      {/* --- CHART --- */}
       <View style={styles.chart}>
         <View style={styles.names}>
           {MONITORED_APPS.map(app => (
@@ -89,6 +91,9 @@ export const AppStats = () => {
   );
 };
 
+// Builds the axis tick values (e.g. 5, 10, 50, 100, 200) for the current
+// data: shows up to MAX_TICKS ticks, always reaching far enough to cover
+// the largest bar.
 function buildTicks(maxValue: number): number[] {
   const firstReaching = TICK_LADDER.findIndex(tick => tick >= maxValue);
   const lastIndex = firstReaching === -1 ? TICK_LADDER.length - 1 : firstReaching;
@@ -97,6 +102,9 @@ function buildTicks(maxValue: number): number[] {
   return TICK_LADDER.slice(startIndex, endIndex + 1);
 }
 
+// Turns a raw count into a 0-1 fraction of the axis width, walking the tick
+// ladder so equal gaps on screen represent equal steps between ticks rather
+// than a plain linear scale (which would make small apps invisible).
 function positionOf(value: number, ticks: number[]): number {
   if (!Number.isFinite(value) || value <= 0) {
     return 0;

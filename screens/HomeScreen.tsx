@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Colors } from "./scripts/colors";
 import CountDisplay  from "./components/CountDisplay";
 import { AppStats } from "./components/AppStats";
