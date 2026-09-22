@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, AppState, TouchableOpacity, NativeModules } from 'react-native';
 import { Colors } from './scripts/colors';
+import { checkAllPermissions } from './scripts/permissions';
 import PermissionCard from './components/PermissionCard';
 
 const { PermissionsModule: pm } = NativeModules;
@@ -12,16 +13,10 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
 
     const checkPermissions = async () => {
         try {
-            const overlayStatus = await pm.checkOverlayPermission();
-            const accessStatus = await pm.checkAccessibilityPermission();
-            const batteryStatus = await pm.checkBatteryPermission();
-
-            setHasOverlay(overlayStatus);
-            setHasAccess(accessStatus);
-            setHasBattery(batteryStatus);
-
-            if (overlayStatus && accessStatus && batteryStatus) onComplete();
-            
+            const status = await checkAllPermissions();
+            setHasOverlay(status.hasOverlay);
+            setHasAccess(status.hasAccess);
+            setHasBattery(status.hasBattery);
         } catch (error) {
             console.error("Failed to check permissions:", error);
         }

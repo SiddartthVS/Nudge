@@ -1,15 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import HomeScreen from './screens/HomeScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
+import { checkAllPermissions, isFullyGranted } from './screens/scripts/permissions';
+import { Colors } from './screens/scripts/colors';
+
+type Route = 'checking' | 'permissions' | 'home';
 
 export default function App() {
-  const [setupComplete, setSetupComplete] = useState(false);
+  const [route, setRoute] = useState<Route>('checking');
 
-  if (setupComplete) {
+  useEffect(() => {
+    checkAllPermissions().then(status => {
+      setRoute(isFullyGranted(status) ? 'home' : 'permissions');
+    });
+  }, []);
+
+  if (route === 'checking') {
+    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  }
+
+  if (route === 'home') {
     return <HomeScreen />;
   }
 
-  return (
-    <PermissionsScreen onComplete={() => setSetupComplete(true)} />
-  );
+  return <PermissionsScreen onComplete={() => setRoute('home')} />;
 }

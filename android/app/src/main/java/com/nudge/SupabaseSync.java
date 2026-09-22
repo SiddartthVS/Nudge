@@ -71,7 +71,7 @@ public final class SupabaseSync {
     // so this key can only call upsert_daily_counts and cannot read or edit rows
     // directly.
     // ============================================================================================
-    private static final String SUPABASE_URL = "https://zxchoyxqusfbahiidzan.supabase.co/rest/v1/";
+    private static final String SUPABASE_URL = "https://zxchoyxqusfbahiidzan.supabase.co";
     private static final String SUPABASE_KEY = "sb_publishable_5Ah8GtyZbGh_sq7svj98HA_olaKeAbU";
 
     private static final String RPC_PATH = "/rest/v1/rpc/upsert_daily_counts";
@@ -91,7 +91,7 @@ public final class SupabaseSync {
      * Serialises queue reads/writes and uploads so two threads can never race on
      * the queue.
      */
-    private static final Object LOCK = new Object();
+    static final Object LOCK = new Object();
 
     private SupabaseSync() {
     }
@@ -151,7 +151,7 @@ public final class SupabaseSync {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    private static JSONObject readPending(Context context) {
+    static JSONObject readPending(Context context) {
         String raw = prefs(context).getString(KEY_PENDING, null);
         if (raw == null) {
             return new JSONObject();
@@ -217,6 +217,22 @@ public final class SupabaseSync {
     // ----------------------------------------------------------------------
     // network
 
+    static HttpURLConnection openRpc(String rpcName, int bodyLength) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(SUPABASE_URL + "/rest/v1/rpc/" + rpcName)
+                .openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        conn.setReadTimeout(READ_TIMEOUT_MS);
+        conn.setDoOutput(true);
+        conn.setFixedLengthStreamingMode(bodyLength);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("apikey", SUPABASE_KEY);
+        if (SUPABASE_KEY.startsWith("eyJ")) {
+            conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
+        }
+        return conn;
+    }
+
     private static Result upload(String deviceId, String date, String jsonData) {
         HttpURLConnection conn = null;
         try {
@@ -271,7 +287,7 @@ public final class SupabaseSync {
         }
     }
 
-    private static String readBody(InputStream in) {
+    static String readBody(InputStream in) {
         if (in == null) {
             return "";
         }
@@ -296,7 +312,7 @@ public final class SupabaseSync {
     // ----------------------------------------------------------------------
     // helpers
 
-    private static boolean isConfigured() {
+    static boolean isConfigured() {
         return !SUPABASE_URL.contains("YOUR_") && !SUPABASE_KEY.contains("YOUR_");
     }
 
@@ -305,7 +321,7 @@ public final class SupabaseSync {
      * table without
      * needing a login. Note: uninstalling the app creates a new id.
      */
-    private static String getDeviceId(Context context) {
+    static synchronized String getDeviceId(Context context) {
         SharedPreferences p = prefs(context);
         String id = p.getString(KEY_DEVICE_ID, null);
         if (id == null) {

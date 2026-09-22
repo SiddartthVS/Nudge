@@ -1,9 +1,145 @@
-import {Text, View} from 'react-native';
-import {Colors} from '../scripts/colors';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Colors } from '../scripts/colors';
+import { useWeekHistory } from '../scripts/useWeekHistory';
+import { barColor, cardStyles, getCurrentWeekDates, MONITORED_APPS } from '../scripts/chart';
+
+const TICK_LADDER = [5, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+const MIN_TICKS = 4;
+const MAX_TICKS = 6;
 
 export const AppStats = () => {
-    return (
-        <View style={{backgroundColor: Colors.grey}}>
+  const history = useWeekHistory();
+
+  const weekDates = getCurrentWeekDates();
+  const totals = MONITORED_APPS.map(app =>
+    weekDates.reduce((sum, date) => sum + (Number(history[date]?.[app.pkg]) || 0), 0),
+  );
+  const ticks = buildTicks(Math.max(...totals));
+
+  return (
+    <View style={cardStyles.card}>
+      <Text style={cardStyles.title}>Apps</Text>
+
+      <View style={styles.chart}>
+        <View style={styles.names}>
+          {MONITORED_APPS.map(app => (
+            <View key={app.pkg} style={styles.nameCell}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.name}>
+                {app.label}
+              </Text>
+            </View>
+          ))}
         </View>
-    );
+
+        <View style={styles.plot}>
+          {totals.map((value, index) => (
+            <View key={MONITORED_APPS[index].pkg} style={styles.row}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    width: `${positionOf(value, ticks) * 100}%`,
+                    backgroundColor: barColor(index),
+                  },
+                ]}
+              />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.axis}>
+        <View style={styles.axisSpacer} />
+        <View style={styles.ticks}>
+          {ticks.map(tick => (
+            <Text
+              key={tick}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={[cardStyles.axisLabel, styles.tick]}
+            >
+              {tick}
+            </Text>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
 };
+
+function buildTicks(maxValue: number): number[] {
+  const firstReaching = TICK_LADDER.findIndex(tick => tick >= maxValue);
+  const lastIndex = firstReaching === -1 ? TICK_LADDER.length - 1 : firstReaching;
+  const endIndex = Math.max(lastIndex, MIN_TICKS - 1);
+  const startIndex = Math.max(0, endIndex - (MAX_TICKS - 1));
+  return TICK_LADDER.slice(startIndex, endIndex + 1);
+}
+
+function positionOf(value: number, ticks: number[]): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  let lower = 0;
+  for (let i = 0; i < ticks.length; i++) {
+    if (value <= ticks[i]) {
+      return (i + (value - lower) / (ticks[i] - lower)) / ticks.length;
+    }
+    lower = ticks[i];
+  }
+  return 1;
+}
+
+const styles = StyleSheet.create({
+  chart: {
+    flexDirection: 'row',
+    aspectRatio: 3,
+  },
+  names: {
+    width: '24%',
+  },
+  nameCell: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingRight: '10%',
+  },
+  name: {
+    color: Colors.text,
+    fontFamily: 'WorkSans-Medium',
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  plot: {
+    flex: 1,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.text,
+  },
+  row: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  bar: {
+    height: '55%',
+    minWidth: '1.5%',
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  axis: {
+    flexDirection: 'row',
+  },
+  axisSpacer: {
+    width: '24%',
+  },
+  ticks: {
+    flex: 1,
+    flexDirection: 'row',
+    borderTopWidth: 2,
+    borderTopColor: Colors.text,
+    paddingTop: '2%',
+  },
+  tick: {
+    flex: 1,
+    textAlign: 'right',
+  },
+});

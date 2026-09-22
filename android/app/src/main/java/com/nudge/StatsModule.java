@@ -34,6 +34,7 @@ public class StatsModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getWeekHistory(Promise promise) {
+        SupabaseReader.refreshRecentDaysAsync(getReactApplicationContext());
         try {
             String json = WeekHistoryStore
                     .readRecentDaysIncludingToday(getReactApplicationContext())
@@ -42,5 +43,17 @@ public class StatsModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             promise.reject("STATS_READ_FAILED", e);
         }
+    }
+
+    @ReactMethod
+    public void getRangeTotals(final double days, final Promise promise) {
+        final ReactApplicationContext context = getReactApplicationContext();
+        new Thread(() -> {
+            try {
+                promise.resolve(SupabaseReader.getRangeTotals(context, (int) days).toString());
+            } catch (Exception e) {
+                promise.reject("STATS_RANGE_FAILED", e);
+            }
+        }, "nudge-range-stats").start();
     }
 }

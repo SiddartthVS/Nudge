@@ -70,9 +70,6 @@ public class TrackerService extends AccessibilityService {
     /** Font file inside android/app/src/main/assets. */
     private static final String HUD_FONT_ASSET = "fonts/WorkSans-Black.ttf";
 
-    /** How often we bother recomputing today's date. */
-    private static final long DATE_CHECK_INTERVAL_MS = 60_000L;
-
     /**
      * Floor between reel-content checks for the same app. Real reel transitions never
      * happen faster than this, so this just bounds how often we do node-tree work during
@@ -115,7 +112,6 @@ public class TrackerService extends AccessibilityService {
 
     private String currentApp;
     private String cachedDate;
-    private long lastDateCheckAt;
     private boolean persistScheduled;
 
     private final ReelSignal reelSignal = new ReelSignal();
@@ -342,6 +338,10 @@ public class TrackerService extends AccessibilityService {
     }
 
     private void onForegroundWindow(String app) {
+        if (app.equals(getPackageName())) {
+            persistNow();
+        }
+
         if (isTransientPackage(app)) {
             Log.i(TAG, "WINDOW IGNORED | " + app);
             return;
@@ -620,7 +620,6 @@ public class TrackerService extends AccessibilityService {
         String savedData = prefs.getString(KEY_SCROLL_DATA, null);
 
         cachedDate = today;
-        lastDateCheckAt = SystemClock.elapsedRealtime();
 
         if (today.equals(savedDate) && savedData != null) {
             loadCounts(savedData);
@@ -638,14 +637,7 @@ public class TrackerService extends AccessibilityService {
         Log.i(TAG, "STATE INITIALISED | " + today);
     }
 
-    /** Called before each increment, but only recomputes the date once a minute. */
     private void maybeRollOverDate() {
-        long now = SystemClock.elapsedRealtime();
-        if (now - lastDateCheckAt < DATE_CHECK_INTERVAL_MS) {
-            return;
-        }
-        lastDateCheckAt = now;
-
         String today = today();
         if (today.equals(cachedDate)) {
             return;

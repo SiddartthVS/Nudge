@@ -8,12 +8,9 @@ const HomeScreen = () => {
     return (
         <View style={Styles.container}>
             <Text>Welcome to the Home Screen!</Text>
-            <View style={Styles.topSpace} />
             <View style={Styles.countDisplay}><CountDisplay /></View>
-            <View style={Styles.countGap} />
             <View style={Styles.weekStats}><WeekStats /></View>
             <View style={Styles.appStats}><AppStats /></View>
-            <TouchableOpacity style={Styles.settings}></TouchableOpacity>
         </View>
     );
 };
@@ -26,26 +23,24 @@ const Styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.background,
     },
-    topSpace: {
-        height: '8%',
-    },
     countDisplay: {
+        top: '5%',
         height: '36%',
         width: '85%',
     },
-    countGap: {
-        height: '5.4%',
-    },
     weekStats: {
-        height: '30%',
+        top: '8%',
+        height: '22.5%',
         width: '85%',
     },
     appStats: {
-        height: '30%',
-        width: '90%',
+        top: '8%',
+        height:'22.5%',
+        width: '85%',
     },
     settings: {
-        height: '10%',
+        top: '8%',
+        height: '5%',
         width: '10%',
         backgroundColor: Colors.grey,
     },

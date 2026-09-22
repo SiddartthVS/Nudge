@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -28,14 +29,13 @@ final class WeekHistoryStore {
     private static final String TAG = "NudgeWeekHistory";
     private static final String KEY_HISTORY = "week_history";
 
-    /** A week plus a little slack for timezone/day-boundary edge cases. */
-    private static final int MAX_DAYS_KEPT = 9;
+    private static final int MAX_DAYS_KEPT = 7;
 
     private WeekHistoryStore() {
     }
 
     /** Called once per finished day, right when TrackerService archives it. */
-    static void recordDay(Context context, String date, String jsonCounts) {
+    static synchronized void recordDay(Context context, String date, String jsonCounts) {
         SharedPreferences prefs = prefs(context);
         try {
             JSONObject history = readHistory(prefs);
@@ -68,6 +68,25 @@ final class WeekHistoryStore {
         }
 
         return result;
+    }
+
+    static synchronized void mergeFetchedDays(Context context, JSONArray rows) {
+        SharedPreferences prefs = prefs(context);
+        try {
+            JSONObject history = readHistory(prefs);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.getJSONObject(i);
+                history.put(row.getString("day"), row.getJSONObject("counts"));
+            }
+            pruneToRecent(history, MAX_DAYS_KEPT);
+            prefs.edit().putString(KEY_HISTORY, history.toString()).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "mergeFetchedDays failed", e);
+        }
+    }
+
+    static JSONObject readCache(Context context) {
+        return readHistory(prefs(context));
     }
 
     private static SharedPreferences prefs(Context context) {
