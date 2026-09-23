@@ -11,6 +11,11 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Promise;
 
+/**
+ * Lets the React Native permissions screen check and request the three Android permissions
+ * Nudge needs: draw-over-other-apps (for the HUD), the accessibility service (for tracking),
+ * and battery-optimisation exemption (so the service isn't killed in the background).
+ */
 public class PermissionsModule extends ReactContextBaseJavaModule {
     PermissionsModule(ReactApplicationContext context) {
         super(context);
@@ -22,12 +27,14 @@ public class PermissionsModule extends ReactContextBaseJavaModule {
         return "PermissionsModule";
     }
 
+    /** True if Nudge is allowed to draw the floating HUD over other apps. */
     @ReactMethod
     public void checkOverlayPermission(Promise promise) {
         boolean hasOverlay = Settings.canDrawOverlays(getReactApplicationContext());
         promise.resolve(hasOverlay);
     }
 
+    /** True if TrackerService is turned on in Android's Accessibility settings. */
     @ReactMethod
     public void checkAccessibilityPermission(Promise promise) {
         boolean hasAccessibility = false;
@@ -42,6 +49,7 @@ public class PermissionsModule extends ReactContextBaseJavaModule {
         promise.resolve(hasAccessibility);
     }
 
+    /** Opens the system screen where the user grants the overlay permission. */
     @ReactMethod
     public void requestOverlayPermission() {
         Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -51,6 +59,7 @@ public class PermissionsModule extends ReactContextBaseJavaModule {
         getReactApplicationContext().startActivity(intent);
     }
 
+    /** Opens Android's Accessibility settings so the user can turn Nudge's service on. */
     @ReactMethod
     public void requestAccessibilityPermission() {
         Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
@@ -60,9 +69,9 @@ public class PermissionsModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * True when Android's battery optimisation is turned off for Nudge (on Xiaomi/MIUI/HyperOS
-     * this matches Battery saver -> "No restrictions"). Without it these phones freeze the
-     * accessibility service in the background, so reels stop being counted until Nudge is opened.
+     * True when battery optimisation is off for Nudge. Without this, some phones (Xiaomi/MIUI/
+     * HyperOS especially) freeze the accessibility service in the background and counting stops
+     * until Nudge is reopened.
      */
     @ReactMethod
     public void checkBatteryPermission(Promise promise) {
@@ -73,11 +82,7 @@ public class PermissionsModule extends ReactContextBaseJavaModule {
         promise.resolve(unrestricted);
     }
 
-    /**
-     * Tries the most direct screen first and falls back, because OEM builds do not all support
-     * every intent: 1) the one-tap "allow always running in background" dialog, 2) the battery
-     * optimisation list, 3) Nudge's own app-info page.
-     */
+    /** Tries three screens in order, since not every phone supports the same one. */
     @ReactMethod
     public void requestBatteryPermission() {
         Context context = getReactApplicationContext();

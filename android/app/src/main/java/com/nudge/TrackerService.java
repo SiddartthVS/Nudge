@@ -30,23 +30,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * NUDGE - DoomScroll counter.
+ * NUDGE - the accessibility service that watches the screen, counts reels, and drives the
+ * floating HUD. Runs natively and independently of React Native/JS. See Overview.md, section 1,
+ * for the full story of why a raw scroll event isn't enough on its own (ReelSignal handles
+ * that part) and how the HUD stays reliable across app switches.
  *
- * Counting rule: a scroll counts only when the on-screen reel actually changes,
- * not on every raw TYPE_VIEW_SCROLLED event. Android fires TYPE_VIEW_SCROLLED
- * repeatedly while a finger is dragging - including while the drag is held or
- * released back onto the same reel - so counting events 1:1 makes the counter
- * climb with nothing changing on screen. ReelSignal (ported from the open-source
- * Curbox project's reel counter) reads a small piece of on-screen text identifying
- * the current reel and only reports a change when it is genuinely different. See
- * ReelSignal.java for the full explanation.
- *
- * Data flow:
- *   candidate event -> ReelSignal decides if the reel changed -> increment in
- *   memory -> update HUD -> schedule a persist
- *
- * The in-memory increment and the HUD update are always immediate once ReelSignal
- * says a reel changed. Only the SharedPreferences write is delayed (trailing debounce).
+ * Data flow: candidate event -> ReelSignal decides if the reel changed -> increment in memory
+ * -> update HUD -> schedule a persist. The in-memory increment and HUD update are immediate;
+ * only the SharedPreferences write is delayed (trailing debounce).
  */
 public class TrackerService extends AccessibilityService {
 
@@ -71,27 +62,22 @@ public class TrackerService extends AccessibilityService {
     private static final String HUD_FONT_ASSET = "fonts/WorkSans-Black.ttf";
 
     /**
-     * Floor between reel-content checks for the same app. Real reel transitions never
-     * happen faster than this, so this just bounds how often we do node-tree work during
-     * a fast fling or a burst of content-changed events - it does not add latency to
-     * genuine counts, since two distinct reels are always further apart than this.
+     * Floor between reel-content checks for the same app. Real reel transitions never happen
+     * faster than this, so it only bounds how often node-tree work runs during a fast fling -
+     * it never delays a genuine count, since two distinct reels are always further apart.
      */
     private static final long REEL_CHECK_DEBOUNCE_MS = 120L;
     private final Map<String, Long> lastReelCheckAt = new HashMap<>();
 
     /**
-     * Trailing "settle" check. The throttle above drops events, and the event it drops is often
-     * the LAST one of a swipe - the one that fires once the new reel is on screen. Without a
-     * follow-up read, that reel was never seen and its count was lost. After the last event
-     * for an app, we read the screen once more this long later.
+     * Trailing "settle" check. The throttle above can skip the LAST event of a swipe - the one
+     * that fires once the new reel is actually on screen. Without a follow-up read that reel
+     * would never be seen. This re-reads the screen once, this long after the last event.
      */
     private static final long REEL_SETTLE_DELAY_MS = 250L;
     private final Map<String, Runnable> settleRunnables = new HashMap<>();
 
-    /**
-     * Single source of truth for monitored packages. Nothing else in the project
-     * declares these, so this stays the one place to edit them.
-     */
+    /** The only place the four monitored package names are declared. */
     static final Set<String> MONITORED_APPS = Collections.unmodifiableSet(
             new LinkedHashSet<>(Arrays.asList(
                     "com.instagram.android",
@@ -99,6 +85,7 @@ public class TrackerService extends AccessibilityService {
                     "com.facebook.katana",
                     "com.snapchat.android")));
 
+    /** Today's counts, per app. What gets saved to disk and shown on the HUD. */
     private final Map<String, Integer> scrollCache = new HashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -155,7 +142,7 @@ public class TrackerService extends AccessibilityService {
         currentApp = null;
         isAttached = false;
 
-        // Re-send any days that failed to upload earlier (e.g. phone was offline at midnight).
+        // In case an earlier day failed to upload (e.g. phone was offline at midnight).
         SupabaseSync.retryPending(this);
 
         loadState();
@@ -184,9 +171,8 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Runs synchronously on the main thread. Doing this on a Handler post (as the
-     * previous version did) meant super.onDestroy() had already run and the
-     * overlay window leaked.
+     * Runs synchronously, not posted to the Handler - posting it meant super.onDestroy() had
+     * already run by the time this fired, and the overlay window leaked.
      */
     private void teardown() {
         handler.removeCallbacks(hideRunnable);
@@ -236,19 +222,13 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * A scroll or content-change event from a monitored app MIGHT mean the user moved to a
-     * new reel. Debounced per app, then handed to ReelSignal to decide for certain by reading
-     * the actual on-screen content - see ReelSignal.isNewReel for why we can't just trust the
-     * event itself.
+     * A scroll/content-change event from a monitored app MIGHT mean the user moved to a new
+     * reel - handed to ReelSignal to decide for certain by reading the actual screen content.
      */
     private void handleReelCandidateEvent(String app, AccessibilityEvent event) {
-        // A real scroll/content event for a monitored app can only exist if that app is
-        // genuinely on screen right now - this is stronger evidence than any window-state
-        // event. Fixes cases like a fingerprint/app-lock gate in front of Instagram: its
-        // biometric prompt is correctly ignored as transient noise (see isTransientPackage),
-        // but some OEM app-locks never re-fire a window-state event for Instagram once the
-        // prompt clears, which used to leave the HUD stuck hidden even though counting itself
-        // (keyed purely off this event's own package, below) was working the whole time.
+        // A real event from a monitored app is proof that app is on screen right now, stronger
+        // evidence than Android's own window-changed signal (which can be unreliable behind
+        // something like a fingerprint lock screen). See isTransientPackage for more on that.
         confirmMonitoredForeground(app);
 
         if (!reelSignal.isCandidateEvent(app, event.getEventType())) {
@@ -288,6 +268,7 @@ public class TrackerService extends AccessibilityService {
         handler.postDelayed(settle, REEL_SETTLE_DELAY_MS);
     }
 
+    /** Reads the current screen and counts a reel if ReelSignal says it's a new one. */
     private void checkReel(String app) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
@@ -311,10 +292,9 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Bring the HUD in line with reality: if we're seeing events from a monitored app, that
-     * app is on screen, full stop, regardless of what the last window-state event said (or
-     * failed to say). Cheap - just a couple of field checks - so safe to call on every event,
-     * not just ones that end up counting a reel.
+     * Brings the HUD in line with reality: if we're seeing events from a monitored app, that
+     * app is on screen, full stop - regardless of what the last window-state event said (or
+     * failed to say). Cheap, so safe to call on every event, not just counted ones.
      */
     private void confirmMonitoredForeground(String app) {
         handler.removeCallbacks(hideRunnable);
@@ -339,6 +319,8 @@ public class TrackerService extends AccessibilityService {
 
     private void onForegroundWindow(String app) {
         if (app.equals(getPackageName())) {
+            // Nudge itself was brought to the front - flush now instead of waiting for the
+            // debounce, so numbers shown in the app are never stale.
             persistNow();
         }
 
@@ -367,14 +349,12 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * System UI, keyboards, biometric/lock prompts and Nudge itself push windows on top of
-     * the app the user is actually looking at. Treating those as the foreground app would
-     * make the HUD disappear mid-scroll. This list is intentionally loose (keyword matching,
-     * not exact package names) because fingerprint/app-lock gates in front of a monitored app
-     * are OEM-specific and vary; even when a gate's package slips through this filter, the
-     * moment the gated app itself produces a real event, confirmMonitoredForeground corrects
-     * the HUD immediately regardless. This filter mainly avoids visible flicker from noise,
-     * not correctness.
+     * System UI, keyboards, lock/biometric prompts and Nudge itself push windows on top of the
+     * app the user is actually looking at - treating those as the foreground app would make
+     * the HUD disappear mid-scroll. This match is intentionally loose (keywords, not exact
+     * package names) since app-lock gates vary by OEM; even if one slips through, the moment
+     * the gated app itself produces a real event, confirmMonitoredForeground corrects the HUD
+     * anyway. So this filter mainly avoids visible flicker, it isn't load-bearing for accuracy.
      */
     private boolean isTransientPackage(String pkg) {
         return pkg.equals(getPackageName())
@@ -414,8 +394,8 @@ public class TrackerService extends AccessibilityService {
             hudView = LayoutInflater.from(this).inflate(R.layout.floating_hud, null);
             counterText = hudView.findViewById(R.id.scroll_counter_text);
 
-            // The window stays attached while a monitored app is open (that part is what made
-            // the HUD reliable), but the view itself is invisible until a reel is counted.
+            // The window stays attached the whole time a monitored app is open (that's what
+            // makes the HUD reliable) - the view itself starts invisible until a reel counts.
             hudView.setAlpha(0f);
 
             if (hudTypeface == null) {
@@ -435,8 +415,8 @@ public class TrackerService extends AccessibilityService {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                             | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                             | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                            // Position relative to the FULL screen (not the area between the
-                            // status and navigation bars) so the centre is the true centre.
+                            // Position relative to the FULL screen, not just the area between
+                            // the status and navigation bars, so centre gravity is the true centre.
                             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                             | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     PixelFormat.TRANSLUCENT);
@@ -456,9 +436,9 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Attach the overlay window if it is not attached, then push the current
-     * count into the TextView. Attaching/detaching the window (instead of
-     * toggling View visibility) is what makes "appears / disappears" reliable.
+     * Attaches the overlay window if it isn't attached, then pushes the current count into the
+     * TextView. Attaching/detaching the whole window (instead of toggling View visibility) is
+     * what makes "appears / disappears" reliable across devices.
      */
     private void showHud(String app) {
         if (windowManager == null) {
@@ -483,8 +463,8 @@ public class TrackerService extends AccessibilityService {
                 Log.i(TAG, "HUD ATTACHED");
             } catch (Exception e) {
                 Log.e(TAG, "HUD ATTACH FAILED", e);
-                // Drop the view so the next attempt re-inflates a clean one
-                // instead of getting permanently stuck.
+                // Drop the view so the next attempt re-inflates a clean one instead of getting
+                // permanently stuck.
                 try {
                     windowManager.removeViewImmediate(hudView);
                 } catch (Exception ignored) {
@@ -531,9 +511,9 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Fade the count in, hold it, then fade it out. Called once per counted reel. If another
-     * reel is counted while it is still showing, the number just updates and the 2 second
-     * hold restarts, so fast scrolling keeps it on screen instead of flickering.
+     * Fades the count in, holds it, then fades it out. Called once per counted reel. If another
+     * reel is counted while it's still showing, the number just updates and the hold restarts -
+     * so fast scrolling keeps the HUD on screen instead of flickering it on and off.
      */
     private void flashHud() {
         if (!isAttached || hudView == null) {
@@ -556,9 +536,8 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Cheap: builds a 4-key JSON object and calls apply(), which writes off the
-     * main thread. Always leaves a trailing write pending, so the last scroll of
-     * a burst is never lost.
+     * Writes today's counts to disk. Cheap - apply() writes off the main thread - and always
+     * leaves a trailing write pending, so the last scroll of a burst is never lost.
      */
     private void persistNow() {
         handler.removeCallbacks(persistRunnable);
@@ -610,9 +589,9 @@ public class TrackerService extends AccessibilityService {
     // --------------------------------------------------------------- daily reset
 
     /**
-     * Establishes today's state BEFORE any scroll can arrive. The old code did
-     * the date check lazily inside the save path, which meant the first scrolls
-     * after startup could be written into yesterday's bucket and then wiped.
+     * Establishes today's state BEFORE any scroll can arrive. Doing this check lazily inside
+     * the save path (the old approach) meant the first scrolls after startup could land in
+     * yesterday's bucket and then get wiped.
      */
     private void loadState() {
         String today = today();
@@ -637,6 +616,7 @@ public class TrackerService extends AccessibilityService {
         Log.i(TAG, "STATE INITIALISED | " + today);
     }
 
+    /** Checked on every counted reel; rolls the counters over the instant the date changes. */
     private void maybeRollOverDate() {
         String today = today();
         if (today.equals(cachedDate)) {
@@ -652,7 +632,7 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Hands a finished day to local history (what the "This week" chart actually reads) and to
+     * Hands a finished day to local history (what the "This week" chart reads) and to
      * SupabaseSync, which queues it on disk and uploads on its own background thread - so this
      * returns immediately and a failed upload is retried later.
      */

@@ -7,6 +7,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
+// Leftover test module from early setup. Not used by any real feature — safe to delete.
 public class DummyModule extends ReactContextBaseJavaModule {
     DummyModule(ReactApplicationContext context) {
         super(context);

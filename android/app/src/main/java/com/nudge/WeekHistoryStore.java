@@ -13,22 +13,17 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Local, on-device history of finished days, so the "This week" chart has real data to read
- * without depending on Supabase. Supabase (see SupabaseSync) is write-only by design: the
- * migration enables RLS on daily_scroll_counts with no select policy, so the app's own key
- * can never read it back - only the upsert function can write to it. This class is the actual
- * read path for the UI.
+ * On-device history of the last 7 finished days, so the "This week" chart has something fast
+ * and offline-friendly to read. Supabase (SupabaseSync/SupabaseReader) is the permanent copy;
+ * this is a local cache of it, refreshed whenever SupabaseReader fetches new data.
  *
- * Stored as one JSON object under a single SharedPreferences key, in the same prefs file
- * TrackerService already uses:
+ * Stored as one JSON object in the same SharedPreferences file TrackerService uses:
  *   { "yyyy-MM-dd": { "<package>": <count>, ... }, ... }
- * capped to the most recent MAX_DAYS_KEPT days so it can never grow unbounded.
  */
 final class WeekHistoryStore {
 
     private static final String TAG = "NudgeWeekHistory";
     private static final String KEY_HISTORY = "week_history";
-
     private static final int MAX_DAYS_KEPT = 7;
 
     private WeekHistoryStore() {
@@ -49,9 +44,8 @@ final class WeekHistoryStore {
     }
 
     /**
-     * Finished days from local history, plus today's still-accumulating count read straight
-     * from TrackerService's own live counters - so "today" in the chart is always current,
-     * not stale until midnight's archive() call finally records it.
+     * Local history plus today's still-accumulating count, read straight from TrackerService's
+     * live counters so "today" is always current, not stale until it's archived at midnight.
      */
     static JSONObject readRecentDaysIncludingToday(Context context) {
         SharedPreferences prefs = prefs(context);
@@ -70,6 +64,7 @@ final class WeekHistoryStore {
         return result;
     }
 
+    /** Merges rows fetched from Supabase (SupabaseReader) into the local cache. */
     static synchronized void mergeFetchedDays(Context context, JSONArray rows) {
         SharedPreferences prefs = prefs(context);
         try {

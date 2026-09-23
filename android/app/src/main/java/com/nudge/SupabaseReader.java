@@ -18,11 +18,20 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.TreeMap;
 
+/**
+ * Reads scroll history back from Supabase. Calls the get_daily_counts Postgres function
+ * (supabase/migrations/20260921000000_add_get_daily_counts.sql) and combines the result with
+ * whatever is still only on-device (pending uploads, today's live counter) so totals are as
+ * complete as possible even when the network is slow or offline.
+ */
 final class SupabaseReader {
 
     private static final String TAG = "NudgeSupabaseRead";
     private static final String RPC_DAILY_COUNTS = "get_daily_counts";
     private static final int CACHE_DAYS = 7;
+
+    // How long to wait before trying another background refresh, depending on whether the
+    // last one worked.
     private static final long REFRESH_OK_INTERVAL_MS = 10 * 60 * 1000L;
     private static final long REFRESH_FAIL_INTERVAL_MS = 60 * 1000L;
 
@@ -33,6 +42,11 @@ final class SupabaseReader {
     private SupabaseReader() {
     }
 
+    /**
+     * Fetches the last CACHE_DAYS days from Supabase and merges them into the local cache
+     * (WeekHistoryStore), so the "This week" chart stays up to date. Safe to call often - it
+     * no-ops if a refresh is already running or one ran recently.
+     */
     static void refreshRecentDaysAsync(Context context) {
         final Context app = context.getApplicationContext();
         long now = SystemClock.elapsedRealtime();
@@ -64,11 +78,18 @@ final class SupabaseReader {
         }, "nudge-supabase-refresh").start();
     }
 
+    /**
+     * Sums every app's counts over the last `days` days into one total per app. Combines three
+     * sources so the number is as accurate as possible: Supabase, anything still queued for
+     * upload, and today's live counter. Falls back to the on-device 7-day cache (marked
+     * "complete": false) if Supabase can't be reached.
+     */
     static JSONObject getRangeTotals(Context context, int days) throws Exception {
         String from = days > 0 ? dateDaysAgo(days - 1) : null;
         TreeMap<String, JSONObject> byDay = new TreeMap<>();
         boolean complete = true;
 
+        // days == 1 ("Today") never needs Supabase - the live counter below already has it.
         if (days != 1) {
             try {
                 JSONArray rows = fetchDailyCounts(context, from);
@@ -83,6 +104,7 @@ final class SupabaseReader {
             }
         }
 
+        // Add anything not yet confirmed uploaded, so it isn't missing from the total.
         JSONObject pending;
         synchronized (SupabaseSync.LOCK) {
             pending = SupabaseSync.readPending(context);
@@ -95,6 +117,7 @@ final class SupabaseReader {
             }
         }
 
+        // Add today's still-accumulating count, which hasn't been archived yet.
         SharedPreferences prefs =
                 context.getSharedPreferences(TrackerService.PREFS_NAME, Context.MODE_PRIVATE);
         String liveDate = prefs.getString(TrackerService.KEY_CURRENT_DATE, null);
@@ -118,6 +141,7 @@ final class SupabaseReader {
         return result;
     }
 
+    /** Calls the get_daily_counts RPC and returns its rows as-is: [{ "day": ..., "counts": ... }]. */
     static JSONArray fetchDailyCounts(Context context, String fromDate) throws Exception {
         if (!SupabaseSync.isConfigured()) {
             throw new IOException("Supabase is not configured");

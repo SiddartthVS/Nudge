@@ -8,8 +8,8 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
 /**
- * Bridges the on-device scroll history (see WeekHistoryStore) to the React Native UI.
- * Adds no tracking logic of its own - it only exposes what TrackerService already persists.
+ * Bridges the on-device scroll history to the React Native UI. Holds no tracking logic of
+ * its own - it only reads what TrackerService/WeekHistoryStore/SupabaseReader already produce.
  */
 public class StatsModule extends ReactContextBaseJavaModule {
 
@@ -24,13 +24,9 @@ public class StatsModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * Resolves a JSON string shaped as:
-     *   { "yyyy-MM-dd": { "<package>": <count>, ... }, ... }
-     * covering roughly the last week, including today's still-accumulating count.
-     *
-     * Returned as a raw JSON string rather than a WritableMap: the per-app keys are package
-     * names, not fixed field names, so a string the JS side parses with JSON.parse avoids
-     * writing (and maintaining) a manual JSONObject -> WritableMap conversion for no benefit.
+     * Resolves a JSON string shaped as { "yyyy-MM-dd": { "<package>": <count>, ... }, ... },
+     * covering roughly the last 7 days including today's still-live count. Also kicks off a
+     * background refresh from Supabase so later calls have fresher data.
      */
     @ReactMethod
     public void getWeekHistory(Promise promise) {
@@ -45,6 +41,10 @@ public class StatsModule extends ReactContextBaseJavaModule {
         }
     }
 
+    /**
+     * Total per-app counts over the last `days` days (1 = today only). Runs on a background
+     * thread since it may call Supabase over the network.
+     */
     @ReactMethod
     public void getRangeTotals(final double days, final Promise promise) {
         final ReactApplicationContext context = getReactApplicationContext();

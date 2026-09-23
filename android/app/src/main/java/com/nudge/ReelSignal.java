@@ -10,52 +10,34 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Decides whether the currently visible reel/short is actually a DIFFERENT one from the
- * last one we counted, instead of trusting every TYPE_VIEW_SCROLLED / content-changed event.
+ * Decides whether the reel currently on screen is genuinely a NEW one, instead of trusting
+ * every scroll/content-change event. See Overview.md, section 1, for the full explanation of
+ * why events alone aren't enough and how the comparison works.
  *
- * WHY THIS EXISTS
- * ----------------
- * Android fires TYPE_VIEW_SCROLLED repeatedly while a finger is dragging the feed - including
- * while the drag is held in place, or released back onto the same reel. Counting those events
- * 1:1 (the original approach) makes the counter climb while nothing on screen has changed.
+ * In short: for each app, read a small piece of on-screen text that identifies the current
+ * reel (its caption/author/content node), then compare it to the last text seen. If less than
+ * 90% of the words match, it's a new reel. Ported and simplified from the open-source Curbox
+ * project (neth.iecal.curbox.trackers.ReelsCountTracker).
  *
- * THE FIX
- * -------
- * Ported from the open-source Curbox project's reel counter
- * (neth.iecal.curbox.trackers.ReelsCountTracker / hardcoded.ReelAppConfig), simplified from
- * Curbox's general-purpose node-selector scripting language down to plain
- * AccessibilityNodeInfo calls for exactly our four apps. No OCR, no ML, no video analysis -
- * just reading a small piece of on-screen text (caption/author/content node) that identifies
- * the reel currently on screen, and comparing it to the last one we saw:
- *
- *   1. Locate the reel viewer for the app. If it isn't on screen, we're not looking at a
- *      reel at all - no count, and we forget what we last saw so the next reel always counts.
- *   2. Read a small comparator string from the caption/author/content node's subtree.
- *   3. Compare it to the previous comparator with a word-overlap ratio. Two comparators that
- *      still share >=90% of their words are treated as "the same reel" - this is what absorbs
- *      a held/aborted scroll, since the caption/author on screen hasn't actually changed.
- *   4. A small per-app "recently seen" cache (last 50 reels) stops a double count if the user
- *      scrolls back up to a reel they were already just on.
- *
- * One instance of this class is owned by TrackerService and lives exactly as long as it does.
+ * One instance is owned by TrackerService and lives exactly as long as it does.
  */
 final class ReelSignal {
 
     private static final String TAG = "NudgeTracker";
 
-    /** Word-overlap below this ratio counts as a genuinely different reel. */
+    /** Below this word-overlap ratio, two comparators count as different reels. */
     private static final float SAME_REEL_OVERLAP_THRESHOLD = 0.90f;
 
-    /** How many recent reels per app we remember, to avoid double-counting a revisit. */
+    /** How many recent reels per app we remember, so scrolling back doesn't double-count. */
     private static final int SEEN_CACHE_SIZE = 5;
 
-    /** Bound on findByDescription's manual tree walk (Facebook has no stable resource id). */
+    /** Safety cap on Facebook's manual tree search (it has no stable resource id to search by). */
     private static final int MAX_DESC_SEARCH_NODES = 3000;
 
     private interface Extractor {
         /**
-         * Returns null when the current screen is not a reel screen, "" when it is a reel
-         * screen but the comparator content hasn't loaded yet, or the comparator text itself.
+         * null = not on a reel screen. "" = on a reel screen but the text hasn't loaded yet.
+         * Otherwise, the comparator text for whatever reel is currently visible.
          */
         String extract(AccessibilityNodeInfo root, String pkg);
     }
@@ -70,6 +52,7 @@ final class ReelSignal {
         }
     }
 
+    // One entry per monitored app: which event type to react to, and how to read its screen.
     private static final Map<String, PackageConfig> CONFIGS = new HashMap<>();
 
     static {
@@ -83,22 +66,22 @@ final class ReelSignal {
                 new PackageConfig(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, ReelSignal::extractSnapchat));
     }
 
-    /** Last comparator text seen per app, "" if none yet. */
+    /** Last comparator text seen per app ("" if none yet). */
     private final Map<String, String> lastComparator = new HashMap<>();
 
-    /** Per-app bounded cache of recently counted comparator texts. */
+    /** Per-app bounded cache of recently counted comparator texts, to avoid double-counting. */
     private final Map<String, LinkedHashMap<String, Boolean>> seenCache = new HashMap<>();
 
-    /** True if this event type is one we should react to for this app. */
+    /** True if this event type is one we care about for this app. */
     boolean isCandidateEvent(String pkg, int eventType) {
         PackageConfig cfg = CONFIGS.get(pkg);
         return cfg != null && (eventType & cfg.eventTypeMask) != 0;
     }
 
     /**
-     * Reads the screen now and decides whether the visible reel is a new one.
-     * Called both right after an event AND again once events stop (the "settle" check),
-     * because the last event of a swipe often fires before the new reel's text is on screen.
+     * Reads the screen right now and decides whether the visible reel is a new one.
+     * Called both right after an event and again once events settle - see TrackerService's
+     * "settle check" for why a single call isn't always enough.
      *
      * @return true if a genuinely new reel should be counted.
      */
@@ -117,9 +100,8 @@ final class ReelSignal {
         }
 
         if (comparator == null) {
-            // Reel viewer not found/visible. During a swipe the viewer's nodes can vanish for a
-            // moment, so we deliberately KEEP the last reel instead of forgetting it. Forgetting
-            // made the next reel look like the "first" one and skip its count.
+            // Reel viewer not visible right now. Deliberately keep the last comparator instead
+            // of clearing it, since the viewer can briefly disappear mid-swipe.
             return false;
         }
 
@@ -127,7 +109,6 @@ final class ReelSignal {
         String previousText = lastComparator.containsKey(pkg) ? lastComparator.get(pkg) : "";
 
         if (currentText.isEmpty() || currentText.equals(previousText)) {
-            // Reel screen visible but comparator hasn't loaded, or truly nothing changed.
             return false;
         }
 
@@ -146,8 +127,8 @@ final class ReelSignal {
             }
         }
 
-        // Keep tracking progressively-loading text even when it wasn't (yet) a substantial
-        // change, so we compare against the fullest version once it settles.
+        // Keep tracking text even when it wasn't (yet) a substantial change, so we compare
+        // against the fullest version once a slowly-loading caption settles.
         if (substantial || currentText.length() > previousText.length()) {
             lastComparator.put(pkg, currentText);
         }
@@ -158,6 +139,7 @@ final class ReelSignal {
         return counted;
     }
 
+    /** Shortens a comparator for logging so logcat stays readable. */
     private static String abbreviate(String s) {
         String flat = s.replace('\n', ' ');
         return flat.length() <= 40 ? flat : flat.substring(0, 40) + "...";
@@ -174,6 +156,7 @@ final class ReelSignal {
 
     // --------------------------------------------------------------- per-app extractors
 
+    /** Instagram: only a reel screen if both the pager and its caption bar are visible. */
     private static String extractInstagram(AccessibilityNodeInfo root, String pkg) {
         AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/clips_viewer_view_pager");
         AccessibilityNodeInfo controls = firstById(root, pkg + ":id/clips_ufi_component");
@@ -184,6 +167,7 @@ final class ReelSignal {
             return null;
         }
 
+        // Comparator = caption text + author username.
         StringBuilder sb = new StringBuilder();
         AccessibilityNodeInfo caption = firstById(root, pkg + ":id/clips_captions_component");
         if (caption != null) {
@@ -198,6 +182,7 @@ final class ReelSignal {
         return sb.toString();
     }
 
+    /** YouTube Shorts: comparator is the content node's text, with fixed UI chrome stripped. */
     private static String extractYoutube(AccessibilityNodeInfo root, String pkg) {
         AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/reel_recycler");
         boolean onScreen = isVisible(viewer);
@@ -215,11 +200,7 @@ final class ReelSignal {
         return cleanYoutubeComparator(text);
     }
 
-    /**
-     * YouTube's content node carries a lot of fixed chrome text (nav bar labels, "Video
-     * Progress", etc.) alongside the caption. Strip the boilerplate so it doesn't drown out
-     * genuine caption changes, matching Curbox's YouTube cleanser.
-     */
+    /** Strips YouTube's fixed nav/menu text so it doesn't drown out real caption changes. */
     private static String cleanYoutubeComparator(String value) {
         String compact = value.replace("\n", "");
         if (compact.contains("PostPostPostlike") || compact.length() <= 15) {
@@ -232,6 +213,7 @@ final class ReelSignal {
                 .replace("soundSearchMoreHomeHomeShortsShortsCreateSubscriptions", "");
     }
 
+    /** Facebook Reels: no stable id, so search by content-description instead. */
     private static String extractFacebook(AccessibilityNodeInfo root, String pkg) {
         AccessibilityNodeInfo reel = findByDescription(root, "Reels tab details", MAX_DESC_SEARCH_NODES);
         boolean onScreen = isVisible(reel);
@@ -250,6 +232,7 @@ final class ReelSignal {
         return text;
     }
 
+    /** Snapchat Spotlight: comparator is the content viewer's text. */
     private static String extractSnapchat(AccessibilityNodeInfo root, String pkg) {
         AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/spotlight_container");
         boolean onScreen = isVisible(viewer);
@@ -269,14 +252,16 @@ final class ReelSignal {
 
     // ------------------------------------------------------------------ node tree helpers
 
+    /**
+     * Finds the first VISIBLE node with this resource id. A pager can keep neighbouring
+     * (off-screen) pages attached, so the first match in the list isn't always the one
+     * actually on screen.
+     */
     private static AccessibilityNodeInfo firstById(AccessibilityNodeInfo root, String id) {
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(id);
         if (nodes == null || nodes.isEmpty()) {
             return null;
         }
-        // Reel pagers keep neighbouring pages attached, so the same id can match the reel
-        // above/below the one on screen. Taking nodes.get(0) blindly could read the wrong
-        // reel's caption, so prefer the first node that is actually visible.
         AccessibilityNodeInfo chosen = null;
         for (AccessibilityNodeInfo node : nodes) {
             if (chosen == null && node != null && node.isVisibleToUser()) {
@@ -288,13 +273,7 @@ final class ReelSignal {
         return chosen;
     }
 
-    /**
-     * Bounded depth-first search for a node whose contentDescription matches exactly.
-     * Facebook's Reels tab has no stable resource id, unlike the other three apps.
-     * Rejected nodes are recycled; nodes on the path to a match are left for the framework to
-     * reclaim (a handful of nodes at most, bounded by tree depth) rather than chasing a strict
-     * recycle discipline the framework no longer requires on modern Android versions.
-     */
+    /** Bounded depth-first search for a node with an exact content-description match. */
     private static AccessibilityNodeInfo findByDescription(AccessibilityNodeInfo root, String desc, int maxNodes) {
         if (root == null) {
             return null;
@@ -337,10 +316,7 @@ final class ReelSignal {
         return node != null && node.isVisibleToUser();
     }
 
-    /**
-     * Concatenates a node's own text/contentDescription with the same from its descendants,
-     * depth- and length-bounded. Ported from Curbox's UiHiderRuntime#collectSubtreeText.
-     */
+    /** Collects a node's own text/description plus its descendants', depth- and length-bounded. */
     private static String subtreeText(AccessibilityNodeInfo node, int maxDepth, int maxChars) {
         StringBuilder out = new StringBuilder(Math.min(maxChars, 1024));
         appendNodeText(node, out, maxChars);
@@ -408,6 +384,7 @@ final class ReelSignal {
         }
     }
 
+    /** recycle() is deprecated but harmless to call; wrapped since it can throw on some OEMs. */
     private static void safeRecycle(AccessibilityNodeInfo node) {
         if (node == null) {
             return;
@@ -421,11 +398,7 @@ final class ReelSignal {
 
     // ----------------------------------------------------------------- comparator similarity
 
-    /**
-     * True when the two comparator strings share less than 90% of their words - i.e. this is
-     * genuinely a different reel, not the same one re-observed mid-drag.
-     * Ported from Curbox's ReelsCountTracker#isSubstantialTextChange.
-     */
+    /** True when less than 90% of the two texts' words overlap - i.e. genuinely a new reel. */
     private static boolean isSubstantialTextChange(String currentText, String previousText) {
         if (currentText.isEmpty() || previousText.isEmpty()) {
             return true;
@@ -458,6 +431,7 @@ final class ReelSignal {
         return overlapRatio < SAME_REEL_OVERLAP_THRESHOLD;
     }
 
+    /** Splits on whitespace and counts occurrences of each word. */
     private static Map<String, Integer> wordCounts(String text) {
         Map<String, Integer> counts = new HashMap<>();
         int len = text.length();

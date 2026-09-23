@@ -18,59 +18,28 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Uploads finished days to Supabase (Postgres).
+ * Uploads finished days to Supabase over plain HTTP (not the supabase-js package, since this
+ * runs inside the accessibility service, independent of whether the JS engine is alive).
+ * Calls the upsert_daily_counts Postgres function - see
+ * supabase/migrations/20260919000000_create_daily_scroll_counts.sql.
  *
- * WHY THIS IS PLAIN HTTP AND NOT supabase-js
- * TrackerService is a native Java AccessibilityService. It runs whether or not
- * the React Native
- * JS engine is alive, so it cannot call the supabase-js package that is
- * installed for the JS
- * side. Instead this class talks straight to Supabase's REST API with
- * HttpURLConnection, which
- * needs no extra Gradle dependency.
+ * Reliability: a finished day is written to a local pending queue BEFORE it's uploaded, and
+ * only removed once Supabase confirms it. If the upload fails (offline, server error) the day
+ * just stays queued and is retried on the next rollover or service start - see retryPending.
  *
- * WHAT IT CALLS
- * POST {SUPABASE_URL}/rest/v1/rpc/upsert_daily_counts - a Postgres function
- * created by
- * supabase/migrations/20260919000000_create_daily_scroll_counts.sql. It writes
- * one row per
- * (device, day) into public.daily_scroll_counts and overwrites that row if it
- * already exists,
- * so uploading the same day twice is harmless.
- *
- * RELIABILITY
- * Days are archived exactly once (at the daily rollover), and by then the local
- * counters have
- * already been reset. So a failed upload (no internet, Supabase down) must NOT
- * lose the day:
- * every day is first written to a small pending queue in SharedPreferences, and
- * only removed
- * once Supabase confirms it. Anything left in the queue is retried on the next
- * archive and every
- * time the service starts (see retryPending).
- *
- * Every public method is safe to call from the main thread; the work runs on a
- * background thread.
+ * Every public method here is safe to call from the main thread; the actual work always runs
+ * on a background thread.
  */
 public final class SupabaseSync {
 
     private static final String TAG = "NudgeSupabase";
 
-    // ============================================================================================
-    // PLACEHOLDERS - replace these two values (Supabase dashboard > Project
-    // Settings > API Keys).
-    //
-    // SUPABASE_URL : "Project URL", e.g. https://abcdefghijklmnop.supabase.co
-    // SUPABASE_KEY : the PUBLISHABLE key (sb_publishable_...) or the legacy "anon"
-    // key (eyJ...).
-    //
-    // NEVER put the secret key or the service_role key here - anything in the APK
-    // can be
-    // extracted. The publishable/anon key is designed to be public: the migration
-    // locks the table
-    // so this key can only call upsert_daily_counts and cannot read or edit rows
-    // directly.
-    // ============================================================================================
+    // ============================================================================
+    // Replace these two before release (Supabase dashboard > Project Settings > API Keys).
+    // SUPABASE_URL = "Project URL". SUPABASE_KEY = the PUBLISHABLE or anon key - never the
+    // secret/service_role key, since anything in the APK can be extracted. The table's RLS
+    // policy means this key can only call upsert_daily_counts, never read/write rows directly.
+    // ============================================================================
     private static final String SUPABASE_URL = "https://zxchoyxqusfbahiidzan.supabase.co";
     private static final String SUPABASE_KEY = "sb_publishable_5Ah8GtyZbGh_sq7svj98HA_olaKeAbU";
 
@@ -87,25 +56,19 @@ public final class SupabaseSync {
         OK, RETRY_LATER, DROP
     }
 
-    /**
-     * Serialises queue reads/writes and uploads so two threads can never race on
-     * the queue.
-     */
+    /** Serialises queue reads/writes/uploads so two threads never race on the queue. */
     static final Object LOCK = new Object();
 
     private SupabaseSync() {
     }
 
-    // ---------------------------------------------------------------------- public
-    // API
+    // ---------------------------------------------------------------------- public API
 
     /**
-     * Queue a finished day and try to upload everything pending.
+     * Queues a finished day and tries to upload everything pending.
      *
-     * @param date     "yyyy-MM-dd" (the device's local date for the day being
-     *                 archived)
-     * @param jsonData per-app counts, e.g.
-     *                 {"com.instagram.android":214,"com.google.android.youtube":37}
+     * @param date     "yyyy-MM-dd", the device's local date for the day being archived
+     * @param jsonData per-app counts, e.g. {"com.instagram.android":214,...}
      */
     public static void archiveDay(final Context context, final String date, final String jsonData) {
         final Context app = context.getApplicationContext();
@@ -124,10 +87,7 @@ public final class SupabaseSync {
         }, "nudge-supabase").start();
     }
 
-    /**
-     * Retry anything left over from earlier failures. Cheap no-op when the queue is
-     * empty.
-     */
+    /** Retries anything left over from earlier failures. Cheap no-op if the queue is empty. */
     public static void retryPending(Context context) {
         final Context app = context.getApplicationContext();
         new Thread(new Runnable() {
@@ -144,8 +104,7 @@ public final class SupabaseSync {
         }, "nudge-supabase-retry").start();
     }
 
-    // ------------------------------------------------------------------------
-    // queue
+    // ------------------------------------------------------------------------ queue
 
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -164,10 +123,7 @@ public final class SupabaseSync {
         }
     }
 
-    /**
-     * commit(), not apply(): we are on a background thread and must be durable
-     * before uploading.
-     */
+    /** commit(), not apply(): this runs on a background thread and must be durable before upload. */
     private static void writePending(Context context, JSONObject pending) {
         prefs(context).edit().putString(KEY_PENDING, pending.toString()).commit();
     }
@@ -198,7 +154,7 @@ public final class SupabaseSync {
         while (keys.hasNext()) {
             dates.add(keys.next());
         }
-        // Oldest first (yyyy-MM-dd sorts correctly as text).
+        // Oldest first ("yyyy-MM-dd" sorts correctly as text).
         java.util.Collections.sort(dates);
 
         for (String date : dates) {
@@ -208,15 +164,15 @@ public final class SupabaseSync {
                 pending.remove(date);
                 writePending(context, pending);
             } else {
-                // Offline or server trouble: stop now, everything left stays queued.
+                // Offline or server trouble - stop here, everything left stays queued.
                 break;
             }
         }
     }
 
-    // ----------------------------------------------------------------------
-    // network
+    // ---------------------------------------------------------------------- network
 
+    /** Opens a POST connection to a Supabase RPC endpoint with the right auth headers. */
     static HttpURLConnection openRpc(String rpcName, int bodyLength) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(SUPABASE_URL + "/rest/v1/rpc/" + rpcName)
                 .openConnection();
@@ -250,8 +206,8 @@ public final class SupabaseSync {
             conn.setFixedLengthStreamingMode(payload.length);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("apikey", SUPABASE_KEY);
-            // Legacy anon keys are JWTs and also go in Authorization. New publishable keys
-            // (sb_publishable_...) are not JWTs and must only be sent as "apikey".
+            // Legacy anon keys are JWTs and also need Authorization. New publishable keys
+            // (sb_publishable_...) aren't JWTs and must only be sent as "apikey".
             if (SUPABASE_KEY.startsWith("eyJ")) {
                 conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
             }
@@ -269,11 +225,9 @@ public final class SupabaseSync {
             String error = readBody(conn.getErrorStream());
             Log.e(TAG, "UPLOAD FAILED | " + date + " | HTTP " + status + " | " + error);
 
-            // 400/422 = the payload itself is rejected; retrying can never fix that, and
-            // keeping
-            // it would block every later day behind it. Everything else (401/403 bad key,
-            // 404 wrong
-            // URL or migration not run, 5xx, 429) is fixable, so keep the day queued.
+            // 400/422 = the payload itself is invalid; retrying can't fix that and would block
+            // every later day behind it, so drop it. Everything else (bad key, wrong URL, 5xx,
+            // rate limit) is fixable, so keep the day queued.
             return (status == 400 || status == 422) ? Result.DROP : Result.RETRY_LATER;
 
         } catch (Exception e) {
@@ -309,17 +263,19 @@ public final class SupabaseSync {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // helpers
+    // ---------------------------------------------------------------------- helpers
 
     static boolean isConfigured() {
         return !SUPABASE_URL.contains("YOUR_") && !SUPABASE_KEY.contains("YOUR_");
     }
 
     /**
-     * Anonymous per-install id, so this device's days stay grouped together in the
-     * table without
-     * needing a login. Note: uninstalling the app creates a new id.
+     * Anonymous per-install id that groups this device's days together in the table, without
+     * needing a login. Uninstalling the app creates a new id on the next install.
+     *
+     * TODO BEFORE RELEASE: this currently ignores the real id below and always returns the
+     * fixed string "TEST_DEVICE_DO_NOT_USE", so every install shares one row of test data
+     * instead of getting its own private data. Change the final line to `return id;`.
      */
     static synchronized String getDeviceId(Context context) {
         SharedPreferences p = prefs(context);
