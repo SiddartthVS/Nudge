@@ -1,97 +1,39 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Nudge
 
-# Getting Started
+**A quiet number that tells you how much you've actually scrolled.**
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Nudge sits in the background and counts every real Reel, Short, and Spotlight you scroll through — Instagram, YouTube, Facebook, and Snapchat — and shows you the number, right there on screen, the moment it happens.
 
-## Step 1: Start Metro
+No lectures. No blocking. No guessing. Just the count.
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+---
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## What it does
 
-```sh
-# Using npm
-npm start
+Open Instagram, YouTube, Facebook, or Snapchat, and a small number appears on screen. Every time you scroll to a new Reel or Short, it goes up. Leave the app, and it disappears — until you come back.
 
-# OR using Yarn
-yarn start
-```
+That's the whole idea: making something invisible, visible.
 
-## Step 2: Build and run your app
+## What you see in the app
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+- **Today's total** — how many reels you've scrolled through today, with a tap-to-filter view by app or by time range: Today, This week, This month, This year, or your Lifetime total.
+- **This week** — a simple day-by-day chart of the last 7 days, so you can see whether today was a normal day or not.
+- **Apps** — a side-by-side comparison of Instagram, YouTube, Facebook, and Snapchat, so you know exactly where the time is actually going.
 
-### Android
+## How it counts
 
-```sh
-# Using npm
-npm run android
+Nudge doesn't just count every flick of your thumb — a held or aborted scroll doesn't count, only an actual, different Reel loading on screen does. It reads what's already on your screen for a fraction of a second to tell the two apart, the same way a screen reader would, and nothing more.
 
-# OR using Yarn
-yarn android
-```
+## Your data
 
-### iOS
+Your counts live on your phone first. A private backup copy is kept in the cloud under an anonymous, random ID generated on your device — there's no account, no sign-in, and no personal information attached to it.
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+## Permissions Nudge asks for, and why
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+- **Display over other apps** — so the counter can actually appear on screen.
+- **Accessibility service** — this is what lets Nudge notice when a new Reel or Short has loaded, the same permission category screen readers use. Nudge only ever looks at the four apps above, and only to tell whether the reel on screen has changed.
+- **Run in background / ignore battery optimisation** — so counting doesn't stop the moment you switch apps.
 
-```sh
-bundle install
-```
+---
 
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+*Nudge doesn't try to stop you from scrolling. It just makes sure you know you're doing it.*

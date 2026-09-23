@@ -27,6 +27,153 @@ Once it has this text for the current reel and the text from the *previous* reel
 
 There's also a small memory of the last 5 reels seen per app, so if you scroll back up to a reel you were already just on, it doesn't get counted twice.
 
+### The actual detection code, app by app
+
+Each app gets its own small function in `ReelSignal.java` that reads a couple of specific elements off the screen and turns them into one comparator string. `root` is the current screen; `pkg` is the app's package name. Returning `null` means "this isn't a reel screen at all" (nothing is counted); returning `""` means "it is a reel screen, but the text hasn't loaded yet."
+
+**Instagram** — a reel only counts as on-screen once both the video pager *and* its caption/like bar are visible. The comparator is the caption plus the author's username:
+
+```java
+private static String extractInstagram(AccessibilityNodeInfo root, String pkg) {
+    AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/clips_viewer_view_pager");
+    AccessibilityNodeInfo controls = firstById(root, pkg + ":id/clips_ufi_component");
+    boolean onScreen = isVisible(viewer) && isVisible(controls);
+    safeRecycle(viewer);
+    safeRecycle(controls);
+    if (!onScreen) {
+        return null;
+    }
+
+    StringBuilder sb = new StringBuilder();
+    AccessibilityNodeInfo caption = firstById(root, pkg + ":id/clips_captions_component");
+    if (caption != null) {
+        sb.append(subtreeText(caption, 32, 20000));
+        safeRecycle(caption);
+    }
+    AccessibilityNodeInfo author = firstById(root, pkg + ":id/clips_author_username");
+    if (author != null) {
+        sb.append(subtreeText(author, 32, 20000));
+        safeRecycle(author);
+    }
+    return sb.toString();
+}
+```
+
+**YouTube Shorts** — reads the whole content node's text, then strips out YouTube's fixed navigation/menu chrome text (which never changes and would otherwise mask real caption changes):
+
+```java
+private static String extractYoutube(AccessibilityNodeInfo root, String pkg) {
+    AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/reel_recycler");
+    boolean onScreen = isVisible(viewer);
+    safeRecycle(viewer);
+    if (!onScreen) {
+        return null;
+    }
+
+    AccessibilityNodeInfo content = firstById(root, pkg + ":id/reel_player_page_content");
+    if (content == null) {
+        return "";
+    }
+    String text = subtreeText(content, 32, 20000);
+    safeRecycle(content);
+    return cleanYoutubeComparator(text);
+}
+```
+
+**Facebook Reels** — unlike the other three apps, Facebook has no stable resource ID to search for, so it walks the screen's element tree looking for a node whose accessibility label is exactly `"Reels tab details"`, then reads the text around its parent:
+
+```java
+private static String extractFacebook(AccessibilityNodeInfo root, String pkg) {
+    AccessibilityNodeInfo reel = findByDescription(root, "Reels tab details", MAX_DESC_SEARCH_NODES);
+    boolean onScreen = isVisible(reel);
+    if (!onScreen) {
+        safeRecycle(reel);
+        return null;
+    }
+
+    AccessibilityNodeInfo parent = reel.getParent();
+    safeRecycle(reel);
+    if (parent == null) {
+        return "";
+    }
+    String text = subtreeText(parent, 16, 4000);
+    safeRecycle(parent);
+    return text;
+}
+```
+
+**Snapchat Spotlight** — the simplest of the four: just the text inside its content viewer.
+
+```java
+private static String extractSnapchat(AccessibilityNodeInfo root, String pkg) {
+    AccessibilityNodeInfo viewer = firstById(root, pkg + ":id/spotlight_container");
+    boolean onScreen = isVisible(viewer);
+    safeRecycle(viewer);
+    if (!onScreen) {
+        return null;
+    }
+
+    AccessibilityNodeInfo content = firstById(root, pkg + ":id/opera_viewer");
+    if (content == null) {
+        return "";
+    }
+    String text = subtreeText(content, 32, 20000);
+    safeRecycle(content);
+    return text;
+}
+```
+
+**The 90%-word-overlap comparison** that turns two comparator strings into a yes/no "is this a new reel" decision:
+
+```java
+private static boolean isSubstantialTextChange(String currentText, String previousText) {
+    if (currentText.isEmpty() || previousText.isEmpty()) {
+        return true;
+    }
+
+    Map<String, Integer> currentWords = wordCounts(currentText);
+    Map<String, Integer> previousWords = wordCounts(previousText);
+    if (currentWords.isEmpty() || previousWords.isEmpty()) {
+        return true;
+    }
+
+    boolean currentIsSmaller = currentWords.size() < previousWords.size();
+    Map<String, Integer> smaller = currentIsSmaller ? currentWords : previousWords;
+    Map<String, Integer> larger = currentIsSmaller ? previousWords : currentWords;
+
+    int intersectionSize = 0;
+    int totalSmaller = 0;
+    for (Map.Entry<String, Integer> entry : smaller.entrySet()) {
+        int count = entry.getValue();
+        totalSmaller += count;
+        Integer largerCount = larger.get(entry.getKey());
+        intersectionSize += Math.min(count, largerCount == null ? 0 : largerCount);
+    }
+
+    if (totalSmaller == 0) {
+        return true;
+    }
+
+    float overlapRatio = (float) intersectionSize / (float) totalSmaller;
+    return overlapRatio < SAME_REEL_OVERLAP_THRESHOLD; // 0.90f
+}
+```
+
+Each app also has one more setting attached to it — which raw Android event type is even worth checking in the first place:
+
+```java
+CONFIGS.put("com.instagram.android",
+        new PackageConfig(AccessibilityEvent.TYPE_VIEW_SCROLLED, ReelSignal::extractInstagram));
+CONFIGS.put("com.google.android.youtube",
+        new PackageConfig(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, ReelSignal::extractYoutube));
+CONFIGS.put("com.facebook.katana",
+        new PackageConfig(AccessibilityEvent.TYPE_VIEW_SCROLLED, ReelSignal::extractFacebook));
+CONFIGS.put("com.snapchat.android",
+        new PackageConfig(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, ReelSignal::extractSnapchat));
+```
+
+Instagram and Facebook advance reels in a way that fires a scroll event; YouTube Shorts and Snapchat instead update via a content-change event with no scroll event at all — which is why the service listens for both event types rather than just one.
+
 ### The full step-by-step flow
 
 1. **An event arrives.** Android calls `onAccessibilityEvent()` with some event type and the package name of the app it came from.
