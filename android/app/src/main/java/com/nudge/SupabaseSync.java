@@ -269,21 +269,31 @@ public final class SupabaseSync {
         return !SUPABASE_URL.contains("YOUR_") && !SUPABASE_KEY.contains("YOUR_");
     }
 
+    /** Fixed id the demo (debug) build always uses, so it lines up with the seeded demo data. */
+    private static final String DEMO_DEVICE_ID = "TEST_DEVICE_DO_NOT_USE";
+
     /**
      * Anonymous per-install id that groups this device's days together in the table, without
      * needing a login. Uninstalling the app creates a new id on the next install.
      *
-     * TODO BEFORE RELEASE: this currently ignores the real id below and always returns the
-     * fixed string "TEST_DEVICE_DO_NOT_USE", so every install shares one row of test data
-     * instead of getting its own private data. Change the final line to `return id;`.
+     * Debug builds (BuildConfig.DEBUG == true, e.g. `./gradlew assembleDebug` or running from
+     * Android Studio's Run button) always use the fixed DEMO_DEVICE_ID above, so the app shows
+     * the seeded demo data. Release builds (`./gradlew assembleRelease`, or the "release" build
+     * variant) always use a real random id instead, generated once per install and stored in
+     * SharedPreferences, so the public APK never touches the demo data. This switches
+     * automatically per build - nothing here needs editing by hand before either build.
      */
     static synchronized String getDeviceId(Context context) {
+        if (BuildConfig.DEBUG) {
+            return DEMO_DEVICE_ID;
+        }
+
         SharedPreferences p = prefs(context);
         String id = p.getString(KEY_DEVICE_ID, null);
         if (id == null) {
             id = UUID.randomUUID().toString();
             p.edit().putString(KEY_DEVICE_ID, id).commit();
         }
-        return "TEST_DEVICE_DO_NOT_USE";
+        return id;
     }
 }

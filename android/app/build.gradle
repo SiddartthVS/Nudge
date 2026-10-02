@@ -22,6 +22,11 @@ react {
     //   skip the bundling of the JS bundle and the assets. Default is "debug", "debugOptimized".
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "liteDebugOptimized", "prodDebug", "prodDebugOptimized"]
+    //
+    //   Empty on purpose: the debug build is our standalone demo APK (see SupabaseSync's
+    //   BuildConfig.DEBUG switch), so it needs the JS bundle packaged in like a release build
+    //   would, instead of expecting a live Metro server on the examiner's machine.
+    debuggableVariants = []
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -78,6 +83,9 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.nudge"
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.nudge"
         minSdkVersion rootProject.ext.minSdkVersion
