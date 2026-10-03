@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, AppState, TouchableOpacity, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, Image, AppState, TouchableOpacity, NativeModules, Platform } from 'react-native';
 import { Colors } from './scripts/colors';
-import { checkAllPermissions } from './scripts/permissions';
+import { BACKGROUND_STEPS, BackgroundFamily, checkAllPermissions } from './scripts/permissions';
 import PermissionCard from './components/PermissionCard';
 
 const { PermissionsModule: pm } = NativeModules;
@@ -10,14 +10,19 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
     const [hasOverlay, setHasOverlay] = useState(false);
     const [hasAccess, setHasAccess] = useState(false);
     const [hasBattery, setHasBattery] = useState(false);
+    const [hasBackground, setHasBackground] = useState(false);
+    // null until the first check finishes, so the screen never flashes the wrong card layout.
+    const [family, setFamily] = useState<BackgroundFamily | null>(null);
 
-    // Reads all three permission statuses and updates the tracker/cards.
+    // Reads every permission status and updates the tracker/cards.
     const checkPermissions = async () => {
         try {
             const status = await checkAllPermissions();
             setHasOverlay(status.hasOverlay);
             setHasAccess(status.hasAccess);
             setHasBattery(status.hasBattery);
+            setHasBackground(status.hasBackground);
+            setFamily(status.backgroundFamily);
         } catch (error) {
             console.error("Failed to check permissions:", error);
         }
@@ -36,8 +41,29 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
         return () => subscription.remove();
     }, []);
 
-    const isAllGranted = hasOverlay && hasAccess && hasBattery;
-    const granted = [hasOverlay, hasAccess, hasBattery];
+    // Wait for the first check, so we know whether this phone needs a fourth card.
+    if (family === null) {
+        return <View style={styles.container} />;
+    }
+
+    // Only phones with a maker-specific background switch get the extra card (see
+    // BACKGROUND_STEPS in scripts/permissions.ts). Everyone else sees the original layout.
+    const extraStep = family === 'none' ? null : BACKGROUND_STEPS[family];
+    const hasExtra = extraStep !== null;
+
+    // Four cards need a little more room than three, so the spacing tightens slightly.
+    const layout = hasExtra
+        ? ({ cards: '39%', afterTracker: '3.5%', beforePill: '3.5%' } as const)
+        : ({ cards: '33.4%', afterTracker: '4.8%', beforePill: '5.1%' } as const);
+
+    const isAllGranted = hasOverlay && hasAccess && hasBattery && hasBackground;
+    const granted = hasExtra
+        ? [hasOverlay, hasAccess, hasBattery, hasBackground]
+        : [hasOverlay, hasAccess, hasBattery];
+
+    // On Android 13+, an APK installed outside a store has its accessibility toggle locked until
+    // "Allow restricted settings" is turned on in App info. Only worth mentioning until it's granted.
+    const showRestrictedHint = Platform.OS === 'android' && Number(Platform.Version) >= 33 && !hasAccess;
 
     const RING_SIZE = 36;
     const DISC_SIZE = 18;
@@ -90,16 +116,17 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                     <View style={[styles.layer, { left: RING_SIZE / 2, right: RING_SIZE / 2, justifyContent: 'center' }]}>
                         <View style={{ height: LINE_BASE, backgroundColor: Colors.grey }} />
                         <View style={[styles.segmentRow, { height: RING_SIZE }]}>
-                            <View style={{
-                                flex: 1,
-                                height: LINE_ACTIVE,
-                                backgroundColor: hasOverlay && hasAccess ? Colors.text : 'transparent',
-                            }} />
-                            <View style={{
-                                flex: 1,
-                                height: LINE_ACTIVE,
-                                backgroundColor: hasAccess && hasBattery ? Colors.text : 'transparent',
-                            }} />
+                            {/* One line segment between each pair of neighbouring rings. */}
+                            {granted.slice(1).map((ok, i) => (
+                                <View
+                                    key={i}
+                                    style={{
+                                        flex: 1,
+                                        height: LINE_ACTIVE,
+                                        backgroundColor: granted[i] && ok ? Colors.text : 'transparent',
+                                    }}
+                                />
+                            ))}
                         </View>
                     </View>
 
@@ -124,11 +151,12 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                 </View>
             </View>
 
-            <View style={{ height: '4.8%' }} />
+            <View style={{ height: layout.afterTracker }} />
 
             {/* --- PERMISSION CARDS --- */}
-            <View style={styles.cardsBlock}>
+            <View style={[styles.cardsBlock, { height: layout.cards }]}>
                 <PermissionCard
+                    compact={hasExtra}
                     title={`Display over apps`}
                     description={`Find Nudge ➜ Allow access`}
                     isGranted={hasOverlay}
@@ -136,6 +164,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                 />
 
                 <PermissionCard
+                    compact={hasExtra}
                     title={`Accessibility service`}
                     description={`Downloaded apps ➜ Nudge ➜ Allow access`}
                     isGranted={hasAccess}
@@ -143,14 +172,34 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                 />
 
                 <PermissionCard
+                    compact={hasExtra}
                     title={`Run in background`}
                     description={`Select No restrictions`}
                     isGranted={hasBattery}
                     onPress={() => pm.requestBatteryPermission()}
                 />
+
+                {extraStep && (
+                    <PermissionCard
+                        compact
+                        title={extraStep.title}
+                        description={extraStep.description}
+                        isGranted={hasBackground}
+                        onPress={() => pm.openBackgroundSettings().then(checkPermissions)}
+                    />
+                )}
             </View>
 
-            <View style={{ height: '5.1%' }} />
+            {/* Spacer above the button - doubles as the home of the restricted-settings hint. */}
+            <View style={{ height: layout.beforePill, justifyContent: 'center' }}>
+                {showRestrictedHint && (
+                    <TouchableOpacity onPress={() => pm.openAppInfo()}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={styles.hint}>
+                            Greyed out? Tap ➜ ⋮ ➜ Allow restricted settings
+                        </Text>
+                    </TouchableOpacity>
+                )}
+            </View>
 
             {/* --- NUDGE BUTTON --- */}
             <View style={styles.pillBox}>
@@ -240,8 +289,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cardsBlock: {
-        height: '33.4%',
         justifyContent: 'space-between',
+    },
+    hint: {
+        color: '#858585',
+        fontFamily: 'WorkSans-Medium',
+        fontSize: 11,
+        textAlign: 'center',
     },
     pillBox: {
         height: '6%',

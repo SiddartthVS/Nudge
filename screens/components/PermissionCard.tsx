@@ -7,11 +7,13 @@ type PermissionCardProps = {
     description: string;
     isGranted: boolean;
     onPress: () => void;
+    /** Slightly shorter card, used when a fourth card has to fit in the same space. */
+    compact?: boolean;
 };
 
-const PermissionCard = ({ title, description, isGranted, onPress }: PermissionCardProps) => {
+const PermissionCard = ({ title, description, isGranted, onPress, compact }: PermissionCardProps) => {
     return (
-        <View style={styles.permissionCard}>
+        <View style={[styles.permissionCard, compact && styles.permissionCardCompact]}>
             <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -57,6 +59,10 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         borderRadius: 12,
         marginBottom: 25,
+    },
+    permissionCardCompact: {
+        height: '22%',
+        marginBottom: 14,
     },
     permissionText: {
         flexShrink: 1,

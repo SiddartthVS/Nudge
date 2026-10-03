@@ -248,8 +248,30 @@ This isn't storage in the sense of *saving* anything — it's a short-lived, in-
 
 This part is much simpler — it's just React Native screens showing data that the two systems above already produce.
 
-- **`App.tsx` decides which screen to show.** On launch, it checks all three required permissions (overlay, accessibility, battery). If all three are already granted, it goes straight to the Home screen. Otherwise, it shows the Permissions screen first.
-- **The Permissions screen** shows a progress tracker and three cards (Display over apps, Accessibility service, Run in background), each with an "Allow" button that opens the right Android settings page. It only moves on to the Home screen when the user taps the "Nudge!" button themselves — it doesn't jump forward automatically the instant the last permission is granted.
+- **`App.tsx` decides which screen to show.** On launch, it checks every required permission (overlay, accessibility, battery, plus the phone-maker background step described below, where one applies). If everything is already done, it goes straight to the Home screen. Otherwise, it shows the Permissions screen first.
+- **The Permissions screen** shows a progress tracker and three cards (Display over apps, Accessibility service, Run in background) — or four, on phones that have a maker-specific background switch — each with an "Allow" button that opens the right Android settings page. It only moves on to the Home screen when the user taps the "Nudge!" button themselves — it doesn't jump forward automatically the instant the last permission is granted.
+
+### The phone-maker background step
+
+Android itself has no "autostart" setting. Several makers added their own switch on top of Android's battery optimisation, and if it's off, the system quietly kills Nudge's accessibility service after a while — Android then shows "this app keeps malfunctioning" and counting stops until the service is toggled off and on. Nudge's three standard permissions can all be granted and this can still happen: it was found on a POCO X7 (HyperOS 3), where turning on **Autostart** fixed it.
+
+`PermissionsModule.java` picks a "family" from the phone's maker/brand (POCO and Redmi report Xiaomi; iQOO reports vivo; OnePlus and realme are grouped with Oppo), and the Permissions screen shows a fourth card for it. Phones with no such switch (Pixel, Motorola, Nothing, ...) keep the original three cards.
+
+| Family | What it's called | Where the button goes | Confidence |
+|---|---|---|---|
+| Xiaomi / Redmi / POCO | Autostart | Xiaomi's Autostart list directly; App info if that screen isn't available | High — confirmed on a POCO X7 / HyperOS 3 |
+| Samsung | Per-app battery setting (and, optionally, *Never sleeping apps*) | App info | Medium — documented, not tested here |
+| Oppo / OnePlus / realme | Auto-launch / background activity | App info | Medium — documented, not tested here |
+| Vivo / iQOO | Background start / autostart | App info | Low — wording differs between Funtouch OS and OriginOS |
+| Huawei / Honor | App launch → Manage manually | App info | Low — documented, not tested here |
+
+Design choices worth knowing:
+
+- **Only Xiaomi gets a direct deep link.** The internal screen names makers use for the others are undocumented and change between versions (community lists mark several as untested or obsolete), so everything else opens App info, which exists on every Android.
+- **Settings screens are opened with try/catch, never pre-checked.** On Android 11+, asking "does this screen exist?" can wrongly say no for another app's screen; actually launching it and catching the failure is the approach Android's own documentation recommends. If a screen is missing or not exported, the next option is tried, and no button can crash the app.
+- **The step can't be read back, so "done" means "was taken to the screen".** There's no supported way to read these switches. The only known trick uses hidden APIs and was only tested up to MIUI 14, so it isn't used. Opening the screen once marks the step done (stored in a small `NudgeSetup` preference file).
+- **The texts live in one table**, `BACKGROUND_STEPS` in `screens/scripts/permissions.ts`; a new maker is one line there plus one line in `backgroundFamily()` in `PermissionsModule.java`.
+- On Android 13+, an APK installed outside a store has its accessibility toggle locked ("Restricted setting") until *Allow restricted settings* is turned on from App info's ⋮ menu. Installs from Android Studio or `adb` skip this, so it's easy to miss in testing. The Permissions screen shows a small tappable hint that opens App info while accessibility isn't granted.
 - **The Home screen** is just three cards stacked on top of each other:
   - **CountDisplay** — the big number at the top. It has two rows of pills: pick a time range (Today, This week, This month, This year, Lifetime) at the top, and pick an app (or "All") at the bottom. Whichever two are selected decide what number is shown.
   - **WeekStats ("This week")** — a simple bar chart of the last 7 days, always showing all apps combined.
