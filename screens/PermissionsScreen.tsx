@@ -11,10 +11,10 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
     const [hasAccess, setHasAccess] = useState(false);
     const [hasBattery, setHasBattery] = useState(false);
     const [hasBackground, setHasBackground] = useState(false);
-    // null until the first check finishes, so the screen never flashes the wrong card layout.
+    
+    // null until the first check finishes, preventing layout flashing
     const [family, setFamily] = useState<BackgroundFamily | null>(null);
 
-    // Reads every permission status and updates the tracker/cards.
     const checkPermissions = async () => {
         try {
             const status = await checkAllPermissions();
@@ -28,7 +28,6 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
         }
     };
 
-    // Check on mount, then again every time the user returns from Settings.
     useEffect(() => {
         checkPermissions();
 
@@ -41,17 +40,15 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
         return () => subscription.remove();
     }, []);
 
-    // Wait for the first check, so we know whether this phone needs a fourth card.
     if (family === null) {
         return <View style={styles.container} />;
     }
 
-    // Only phones with a maker-specific background switch get the extra card (see
-    // BACKGROUND_STEPS in scripts/permissions.ts). Everyone else sees the original layout.
+    // Only devices with specific background killers get the extra permission card
     const extraStep = family === 'none' ? null : BACKGROUND_STEPS[family];
     const hasExtra = extraStep !== null;
 
-    // Four cards need a little more room than three, so the spacing tightens slightly.
+    // Adjust vertical layout spacing dynamically based on the number of cards
     const layout = hasExtra
         ? ({ cards: '39%', afterTracker: '3.5%', beforePill: '3.5%' } as const)
         : ({ cards: '33.4%', afterTracker: '4.8%', beforePill: '5.1%' } as const);
@@ -61,8 +58,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
         ? [hasOverlay, hasAccess, hasBattery, hasBackground]
         : [hasOverlay, hasAccess, hasBattery];
 
-    // On Android 13+, an APK installed outside a store has its accessibility toggle locked until
-    // "Allow restricted settings" is turned on in App info. Only worth mentioning until it's granted.
+    // Android 13+ sideloading restriction hint
     const showRestrictedHint = Platform.OS === 'android' && Number(Platform.Version) >= 33 && !hasAccess;
 
     const RING_SIZE = 36;
@@ -80,15 +76,23 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                     maxFontSizeMultiplier={1.2}
                     style={styles.title}
                 >
-                    A few{"\n"}quick{"\n"}steps to{"\n"}Nudge!&nbsp;
+                    A few{"\n"}quick{"\n"}steps to
+                </Text>
+                <View style={styles.logoRow}>
+                    <Text
+                        maxFontSizeMultiplier={1.2}
+                        style={styles.title}
+                    >
+                        Nudge!
+                    </Text>
                     <Image
                         source={require('../assets/images/logo.png')}
                         style={styles.logo}
                     />
-                </Text>
+                </View>
             </View>
 
-            {/* --- LINE --- */}
+            {/* --- DIVIDER --- */}
             <View style={{ height: '3%' }} />
             <View style={styles.divider} />
             <View style={{ height: '3%' }} />
@@ -97,7 +101,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
             <View style={styles.trackerBox}>
                 <View style={[styles.track, { height: RING_SIZE }]}>
                     
-                    {/* Layer 1: the grey rings */}
+                    {/* Layer 1: Grey Rings */}
                     <View style={[styles.layer, styles.roundRow]}>
                         {granted.map((_, i) => (
                             <View
@@ -112,11 +116,10 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                         ))}
                     </View>
 
-                    {/* Layer 2: the connecting line */}
+                    {/* Layer 2: Connecting Line */}
                     <View style={[styles.layer, { left: RING_SIZE / 2, right: RING_SIZE / 2, justifyContent: 'center' }]}>
                         <View style={{ height: LINE_BASE, backgroundColor: Colors.grey }} />
                         <View style={[styles.segmentRow, { height: RING_SIZE }]}>
-                            {/* One line segment between each pair of neighbouring rings. */}
                             {granted.slice(1).map((ok, i) => (
                                 <View
                                     key={i}
@@ -130,7 +133,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                         </View>
                     </View>
 
-                    {/* Layer 3: the coloured discs */}
+                    {/* Layer 3: Coloured Discs */}
                     <View style={[styles.layer, styles.roundRow]}>
                         {granted.map((ok, i) => (
                             <View
@@ -190,7 +193,7 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                 )}
             </View>
 
-            {/* Spacer above the button - doubles as the home of the restricted-settings hint. */}
+            {/* --- RESTRICTED SETTINGS HINT --- */}
             <View style={{ height: layout.beforePill, justifyContent: 'center' }}>
                 {showRestrictedHint && (
                     <TouchableOpacity onPress={() => pm.openAppInfo()}>
@@ -212,9 +215,11 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                     }}
                     style={[
                         styles.pill,
-                        { backgroundColor: isAllGranted ? Colors.orange : Colors.grey,
-                        width: isAllGranted ? '45%' : '35%',
-                        height: isAllGranted ? '100%' : '80%' }
+                        { 
+                            backgroundColor: isAllGranted ? Colors.orange : Colors.grey,
+                            width: isAllGranted ? '45%' : '35%',
+                            height: isAllGranted ? '100%' : '80%' 
+                        }
                     ]}
                 >
                     {isAllGranted && <View style={styles.pillFill} />}
@@ -224,9 +229,10 @@ const PermissionsScreen = ({ onComplete }: { onComplete: () => void }) => {
                         maxFontSizeMultiplier={1.2}
                         style={[
                             styles.pillText,
-                            { color: isAllGranted ? Colors.text : '#858585',
-                            fontSize: isAllGranted ? 30 : 25,
-                             }
+                            { 
+                                color: isAllGranted ? Colors.text : '#858585',
+                                fontSize: isAllGranted ? 30 : 25,
+                            }
                         ]}
                     >
                         Nudge!➜
@@ -251,6 +257,11 @@ const styles = StyleSheet.create({
         fontFamily: 'WorkSans-Black',
         fontSize: 56,
         lineHeight: 62,
+    },
+    logoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
     },
     logo: {
         width: 54,
