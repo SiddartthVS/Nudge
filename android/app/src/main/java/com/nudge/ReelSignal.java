@@ -5,9 +5,11 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Decides whether the reel currently on screen is genuinely a NEW one, instead of trusting
@@ -72,6 +74,12 @@ final class ReelSignal {
     /** Per-app bounded cache of recently counted comparator texts, to avoid double-counting. */
     private final Map<String, LinkedHashMap<String, Boolean>> seenCache = new HashMap<>();
 
+    /**
+     * Apps whose last isNewReel() call ran in block mode. Used only to notice the moment block
+     * mode is switched on, so stale "current reel" state from before blocking is discarded.
+     */
+    private final Set<String> wasBlocked = new HashSet<>();
+
     /** True if this event type is one we care about for this app. */
     boolean isCandidateEvent(String pkg, int eventType) {
         PackageConfig cfg = CONFIGS.get(pkg);
@@ -83,12 +91,34 @@ final class ReelSignal {
      * Called both right after an event and again once events settle - see TrackerService's
      * "settle check" for why a single call isn't always enough.
      *
+     * Cache policy depends on {@code blocked} (the app's Block toggle):
+     * <ul>
+     *   <li>Not blocked: unchanged - a reel counts only if it differs from the last one AND is
+     *       not in seenCache.</li>
+     *   <li>Blocked: seenCache is neither read nor written, so a reel seen before is counted
+     *       (and backed out of) again. Only lastComparator - the reel currently on screen -
+     *       is used, so caption-loading events for the same reel never count twice, while a
+     *       genuinely different reel always counts.</li>
+     * </ul>
+     *
      * @return true if a genuinely new reel should be counted.
      */
-    boolean isNewReel(String pkg, AccessibilityNodeInfo root) {
+    boolean isNewReel(String pkg, AccessibilityNodeInfo root, boolean blocked) {
         PackageConfig cfg = CONFIGS.get(pkg);
         if (cfg == null || root == null) {
             return false;
+        }
+
+        // Block mode just switched on for this app: forget whichever reel was current before,
+        // otherwise returning to that same reel would be mistaken for "already counted".
+        // Switching off keeps lastComparator as-is, so normal behaviour resumes exactly as before.
+        if (blocked != wasBlocked.contains(pkg)) {
+            if (blocked) {
+                wasBlocked.add(pkg);
+                lastComparator.remove(pkg);
+            } else {
+                wasBlocked.remove(pkg);
+            }
         }
 
         String comparator;
@@ -102,6 +132,11 @@ final class ReelSignal {
         if (comparator == null) {
             // Reel viewer not visible right now. Deliberately keep the last comparator instead
             // of clearing it, since the viewer can briefly disappear mid-swipe.
+            // Exception, block mode only: the back gesture leaves the reel viewer, so forget the
+            // current reel - otherwise re-opening that same reel would never be counted/blocked.
+            if (blocked) {
+                lastComparator.remove(pkg);
+            }
             return false;
         }
 
@@ -116,14 +151,19 @@ final class ReelSignal {
         boolean counted = false;
 
         if (substantial) {
-            LinkedHashMap<String, Boolean> seen = seenCache.get(pkg);
-            if (seen == null) {
-                seen = newSeenCache();
-                seenCache.put(pkg, seen);
-            }
-            if (!seen.containsKey(currentText)) {
-                seen.put(currentText, Boolean.TRUE);
+            if (blocked) {
+                // Block mode: seenCache bypassed entirely (no read, no write).
                 counted = true;
+            } else {
+                LinkedHashMap<String, Boolean> seen = seenCache.get(pkg);
+                if (seen == null) {
+                    seen = newSeenCache();
+                    seenCache.put(pkg, seen);
+                }
+                if (!seen.containsKey(currentText)) {
+                    seen.put(currentText, Boolean.TRUE);
+                    counted = true;
+                }
             }
         }
 
@@ -133,7 +173,7 @@ final class ReelSignal {
             lastComparator.put(pkg, currentText);
         }
 
-        Log.i(TAG, "REEL CHECK | " + pkg + " | substantial=" + substantial + " | counted=" + counted
+        Log.i(TAG, "REEL CHECK | " + pkg + " | blocked=" + blocked + " | substantial=" + substantial + " | counted=" + counted
                 + " | prev=\"" + abbreviate(previousText) + "\" | cur=\"" + abbreviate(currentText) + "\"");
 
         return counted;

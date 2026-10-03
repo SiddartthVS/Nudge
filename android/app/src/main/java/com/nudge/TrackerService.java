@@ -289,7 +289,7 @@ public class TrackerService extends AccessibilityService {
             if (rootPkg == null || !app.contentEquals(rootPkg)) {
                 return; // active window is something else (overlay, other app)
             }
-            if (reelSignal.isNewReel(app, root)) {
+            if (reelSignal.isNewReel(app, root, BlockState.isBlocked(getApplicationContext(), app))) {
                 onReelCounted(app);
             }
         } finally {
