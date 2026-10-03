@@ -62,6 +62,16 @@ public class TrackerService extends AccessibilityService {
     private static final String HUD_FONT_ASSET = "fonts/WorkSans-Black.ttf";
 
     /**
+     * Size of the short message the HUD shows instead of the count while an app is blocked.
+     * Far smaller than the count so the longest HudMessages line stays on a single line.
+     */
+    private static final float HUD_MESSAGE_TEXT_SIZE_SP = 34f;
+
+    /** Room around the message text so its grey background doesn't hug the letters. */
+    private static final int HUD_MESSAGE_PADDING_HORIZONTAL_DP = 20;
+    private static final int HUD_MESSAGE_PADDING_VERTICAL_DP = 10;
+
+    /**
      * Floor between reel-content checks for the same app. Real reel transitions never happen
      * faster than this, so it only bounds how often node-tree work runs during a fast fling -
      * it never delays a genuine count, since two distinct reels are always further apart.
@@ -315,6 +325,14 @@ public class TrackerService extends AccessibilityService {
         updateHud(app);
         flashHud();
         schedulePersist();
+
+        // Block mode: the user chose to have Nudge back them out of this app's reels the
+        // instant one is counted, instead of just counting it. Checked last, after the count
+        // and HUD already reflect the reel - blocking doesn't erase that it happened.
+        if (BlockState.isBlocked(getApplicationContext(), app)) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            Log.i(TAG, "BLOCK ACTIVE | " + app + " | back gesture performed");
+        }
     }
 
     private void onForegroundWindow(String app) {
@@ -436,9 +454,10 @@ public class TrackerService extends AccessibilityService {
     }
 
     /**
-     * Attaches the overlay window if it isn't attached, then pushes the current count into the
-     * TextView. Attaching/detaching the whole window (instead of toggling View visibility) is
-     * what makes "appears / disappears" reliable across devices.
+     * Attaches the overlay window if it isn't attached, then pushes the current text (the count,
+     * or a message while blocked) into the TextView. Attaching/detaching the whole window
+     * (instead of toggling View visibility) is what makes "appears / disappears" reliable
+     * across devices.
      */
     private void showHud(String app) {
         if (windowManager == null) {
@@ -498,20 +517,51 @@ public class TrackerService extends AccessibilityService {
         isAttached = false;
     }
 
+    /**
+     * Puts the right text on the HUD for this app: the reel count normally, or a short message
+     * from HudMessages while the app is blocked. The count still goes up and is saved either
+     * way - only what is displayed changes.
+     */
     private void updateHud(String app) {
         if (!isAttached || counterText == null) {
             return;
         }
+        if (BlockState.isBlocked(getApplicationContext(), app)) {
+            showHudMessage(app);
+        } else {
+            showHudCount(app);
+        }
+    }
+
+    private void showHudCount(String app) {
         int count = countFor(app);
         String label = String.valueOf(count);
         counterText.setText(label);
         // Shrink as digits grow so 3- and 4-digit counts still fit across the screen.
         counterText.setTextSize(label.length() <= 2 ? 180f : label.length() == 3 ? 130f : 95f);
+        // The grey box belongs to the blocked message only; clear it if one was showing.
+        counterText.setBackground(null);
+        counterText.setPadding(0, 0, 0, 0);
         Log.i(TAG, "HUD UPDATED | " + app + " = " + count);
     }
 
+    private void showHudMessage(String app) {
+        String message = HudMessages.next();
+        counterText.setText(message);
+        counterText.setTextSize(HUD_MESSAGE_TEXT_SIZE_SP);
+        counterText.setBackgroundResource(R.drawable.hud_message_bg);
+        counterText.setPadding(
+                dpToPx(HUD_MESSAGE_PADDING_HORIZONTAL_DP), dpToPx(HUD_MESSAGE_PADDING_VERTICAL_DP),
+                dpToPx(HUD_MESSAGE_PADDING_HORIZONTAL_DP), dpToPx(HUD_MESSAGE_PADDING_VERTICAL_DP));
+        Log.i(TAG, "HUD UPDATED | " + app + " = \"" + message + "\" (blocked)");
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
     /**
-     * Fades the count in, holds it, then fades it out. Called once per counted reel. If another
+     * Fades the HUD text in, holds it, then fades it out. Called once per counted reel. If another
      * reel is counted while it's still showing, the number just updates and the hold restarts -
      * so fast scrolling keeps the HUD on screen instead of flickering it on and off.
      */

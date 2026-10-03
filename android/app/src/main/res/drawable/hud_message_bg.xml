@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Semi-transparent grey rounded box behind the short message the HUD shows while an app is
+    blocked (applied in TrackerService.showHudMessage). The plain reel count has no background.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#99616161" />
+    <corners android:radius="16dp" />
+</shape>

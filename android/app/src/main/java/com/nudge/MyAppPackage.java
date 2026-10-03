@@ -24,6 +24,7 @@ public class MyAppPackage implements ReactPackage {
         modules.add(new DummyModule(reactContext));
         modules.add(new PermissionsModule(reactContext));
         modules.add(new StatsModule(reactContext));
+        modules.add(new BlockModule(reactContext));
         return modules;
     }
 

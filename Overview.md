@@ -188,7 +188,7 @@ Instagram and Facebook advance reels in a way that fires a scroll event; YouTube
 
 ### A note on the on-screen counter (HUD)
 
-The floating number the user sees is a small overlay window, drawn on top of whatever app is open, using Android's `TYPE_ACCESSIBILITY_OVERLAY` window type. It's kept *attached* to the screen for as long as a monitored app is in the foreground (attaching/detaching the whole window is what makes it reliably appear/disappear — toggling visibility on an already-attached view turned out not to be reliable). Within that, the number itself stays invisible until a reel is actually counted, at which point it flashes as described in step 8 above.
+The floating number the user sees is a small overlay window, drawn on top of whatever app is open, using Android's `TYPE_ACCESSIBILITY_OVERLAY` window type. It's kept *attached* to the screen for as long as a monitored app is in the foreground (attaching/detaching the whole window is what makes it reliably appear/disappear — toggling visibility on an already-attached view turned out not to be reliable). Within that, the number itself stays invisible until a reel is actually counted, at which point it flashes as described in step 8 above. If blocking is switched on for that app (`BlockState`), the flash shows a short random line from `HudMessages.java` ("Got u!", "No reels!", ...) on a single line at a smaller size instead of the number; the count still goes up and is saved exactly as before.
 
 ---
 

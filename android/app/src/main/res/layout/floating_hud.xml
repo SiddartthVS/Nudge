@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Big centered count that flashes on each counted reel (fade logic lives in TrackerService).
-    No background box: the number floats over the app. The shadow keeps it readable over both
+    While an app is blocked it flashes a short message instead, at a much smaller size and on a
+    semi-transparent grey box (drawable/hud_message_bg, applied in code).
+    No background box for the number: it floats over the app. The shadow keeps it readable over both
     bright and dark video. The font (WorkSans-Black) and the text size are set in code, because
     the size shrinks as the count gets more digits so it always fits the screen width.
 -->
@@ -14,6 +16,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:includeFontPadding="false"
+        android:maxLines="1"
         android:text="0"
         android:textColor="#FFFFFF"
         android:textSize="180sp"
